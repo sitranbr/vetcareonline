@@ -644,7 +644,7 @@ export const OperationalDashboard = () => {
         
         return {
           date: formData.date,
-          petName: formData.petName,
+          pet_name: formData.petName, // CORREÇÃO: Usar snake_case 'pet_name' para o banco de dados
           species: formData.species === 'Outros' ? formData.customSpecies : formData.species,
           requester_vet: formData.requesterVet,
           requester_crmv: formData.requesterCrmv,
@@ -677,9 +677,9 @@ export const OperationalDashboard = () => {
       resetForm();
       setActiveTab('list');
       setEditingExamId(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao salvar exame:", error);
-      alert("Erro ao salvar exame. Verifique os dados.");
+      alert("Erro ao salvar exame: " + (error.message || "Verifique os dados."));
     } finally {
       setIsSavingExam(false);
     }
