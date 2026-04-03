@@ -65,12 +65,6 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
               targetUserId = user.ownerId;
               // Usa a tabela correspondente ao role do criador
               targetTable = ownerProfile.role === 'vet' ? 'veterinarians' : 'clinics';
-              
-              console.log('🎨 Equipe interna detectada. Buscando configurações do assinante principal:', {
-                userId: user.id,
-                ownerId: user.ownerId,
-                targetTable
-              });
             } else {
               console.warn('⚠️ Perfil do criador não encontrado, usando configurações padrão');
               if (isMounted) setSettings(DEFAULT_SETTINGS);
@@ -78,18 +72,28 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
             }
           }
           
-          // Busca dados vinculados ao perfil correto (do próprio usuário ou do chefe, se for recepção)
-          const { data } = await supabase
+          // CORREÇÃO CRÍTICA: Monta a query de select dinamicamente para evitar erro de coluna inexistente
+          // A tabela 'clinics' não tem a coluna 'crmv', ela usa 'document'.
+          const selectQuery = targetTable === 'veterinarians' 
+            ? 'name, crmv, phone, email, address, logo_url' 
+            : 'name, document, phone, email, address, logo_url';
+
+          // Busca dados vinculados ao perfil correto
+          const { data, error } = await supabase
             .from(targetTable)
-            .select('name, document, phone, email, address, logo_url, crmv')
+            .select(selectQuery)
             .eq('profile_id', targetUserId)
             .maybeSingle();
+
+          if (error) {
+            console.error(`Erro ao buscar dados na tabela ${targetTable}:`, error);
+          }
 
           if (isMounted && data) {
             setSettings(prev => ({
               ...prev,
               name: data.name || prev.name,
-              // Mapeia corretamente o documento dependendo da tabela usada (Vet usa CRMV, Clínica usa document)
+              // Mapeia corretamente o documento dependendo da tabela usada
               document: (targetTable === 'veterinarians' ? data.crmv : data.document) || prev.document,
               phone: data.phone || prev.phone,
               email: data.email || prev.email,
@@ -98,7 +102,6 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
             }));
           } else if (isMounted) {
              // Se o usuário existe mas não tem dados na tabela específica ainda, mantém padrão
-             console.warn('⚠️ Dados não encontrados na tabela', targetTable, 'para profile_id', targetUserId);
              setSettings(DEFAULT_SETTINGS);
           }
         } catch (err) {
