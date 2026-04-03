@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useRegistry } from '../context/RegistryContext';
@@ -29,6 +29,9 @@ export const AdminUserForm = () => {
 
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formInitialized, setFormInitialized] = useState(false);
+
+  /** Evita reinicializar o formulário a cada mudança de referência em `users` (ex.: refreshUsers), o que recolocava o nível em "Administrador". */
+  const lastHydratedKeyRef = useRef<string | null>(null);
 
   const [memberType, setMemberType] = useState<MemberType>('internal');
   const [partnerRole, setPartnerRole] = useState<PartnerRole>('vet');
@@ -211,6 +214,7 @@ export const AdminUserForm = () => {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
+    lastHydratedKeyRef.current = null;
     setFormInitialized(false);
   }, [userId]);
 
@@ -340,6 +344,12 @@ export const AdminUserForm = () => {
         navigate('/users', { replace: true });
         return;
       }
+      // Mesmo padrão da edição: não reinicializar quando `users`/`currentUser` atualizam (ex.: refreshUsers),
+      // senão setExpandedSections(new Set()) fecha os cards logo após "Expandir".
+      if (lastHydratedKeyRef.current === '__new__') {
+        return;
+      }
+      lastHydratedKeyRef.current = '__new__';
       setEditingUser(null);
       setMemberType('internal');
       setPartnerRole('vet');
@@ -364,6 +374,11 @@ export const AdminUserForm = () => {
       navigate('/users', { replace: true });
       return;
     }
+
+    if (lastHydratedKeyRef.current === userId) {
+      return;
+    }
+    lastHydratedKeyRef.current = userId;
 
     setMemberType('internal');
     setPartnerRole('vet');
