@@ -203,14 +203,14 @@ export const generatePDFReport = async (exams: Exam[], user: User, startDate: st
     
     const row2Y = startY + 28;
     doc.setFont('helvetica', 'normal');
-    doc.text('Rep. ao Profissional:', 18, row2Y);
+    doc.text('Profissional:', 18, row2Y);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
     doc.text(formatMoney(totalRepasseAndre), 44, row2Y);
     
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
-    doc.text('Rep. à Clínica:', 75, row2Y);
+    doc.text('Clínica:', 75, row2Y);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
     doc.text(formatMoney(totalRepasseUnivet), 95, row2Y);
