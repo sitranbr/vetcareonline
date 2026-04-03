@@ -15,14 +15,20 @@ const LoadingScreen = () => {
   const [showOptions, setShowOptions] = useState(false);
 
   useEffect(() => {
-    // Reduzido para 8 segundos para dar feedback mais rápido ao usuário
-    const timer = setTimeout(() => setShowOptions(true), 8000);
+    // Reduzido para 4 segundos para dar feedback muito mais rápido ao usuário em caso de lentidão da rede
+    const timer = setTimeout(() => setShowOptions(true), 4000);
     return () => clearTimeout(timer);
   }, []);
 
   const handleForceLogout = async () => {
-    await supabase.auth.signOut();
-    window.location.href = '/login';
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn('Sign out network request failed, forcing local redirect:', err);
+    } finally {
+      // Ensure user is redirected even if the network request fails
+      window.location.href = '/login';
+    }
   };
 
   const handleReload = () => {
@@ -37,7 +43,7 @@ const LoadingScreen = () => {
         
         {showOptions && (
           <div className="mt-4 flex flex-col gap-3 animate-fade-in w-full">
-            <p className="text-xs text-red-400">Está demorando mais que o normal?</p>
+            <p className="text-xs text-red-400">A conexão está demorando mais que o normal.</p>
             <button 
               onClick={handleReload}
               className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 shadow-sm transition-colors"
@@ -71,14 +77,12 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 };
 
 function App() {
-  // Verifica se as variáveis de ambiente estão configuradas
   useEffect(() => {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
     
     if (!supabaseUrl || !supabaseKey) {
       console.error('❌ Variáveis de ambiente do Supabase não configuradas!');
-      console.error('Configure no Netlify: VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY');
     }
   }, []);
 

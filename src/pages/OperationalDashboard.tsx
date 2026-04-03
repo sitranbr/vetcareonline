@@ -43,7 +43,7 @@ export const OperationalDashboard = () => {
 
   const [reportStartDate, setReportStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [reportEndDate, setReportEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
-  const [reportPartnerFilter, setReportPartnerFilter] = useState('all'); // Novo estado para o filtro de parceiro
+  const [reportPartnerFilter, setReportPartnerFilter] = useState('all'); 
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   const [reportEditorState, setReportEditorState] = useState<{ isOpen: boolean; exam: Exam | null; studyId?: string; }>({ isOpen: false, exam: null });
@@ -391,20 +391,6 @@ export const OperationalDashboard = () => {
       }
     }
 
-    const { data: examsData } = await query;
-
-    if (examsData) {
-      setExams(examsData.map(e => ({
-        id: e.id, date: e.date, petName: e.pet_name, species: e.species, requesterVet: e.requester_vet, 
-        requesterCrmv: e.requester_crmv, modality: e.modality, period: e.period, studies: e.studies, 
-        studyDescription: e.study_description, rxStudies: e.rx_studies, veterinarianId: e.veterinarian_id, 
-        clinicId: e.clinic_id, machineOwner: e.machine_owner, totalValue: e.total_value, 
-        repasseProfessional: e.repasse_professional, repasseClinic: e.repasse_clinic, createdAt: e.created_at, 
-        reportContent: e.report_content, reportImages: e.report_images, status: e.status
-      })));
-    }
-
-    let pricesData: any[] = [];
     const targetUserId = user?.ownerId || user?.id;
 
     try {
@@ -412,65 +398,80 @@ export const OperationalDashboard = () => {
         try {
           return await promise;
         } catch (err) {
-          console.error("Aviso na busca de preços:", err);
+          console.error("Aviso na busca:", err);
           return { data: null, error: err };
         }
       };
 
-      const promises = [
-        safeFetch(supabase.from('price_rules').select('*'))
-      ];
+      const pricePromises = [safeFetch(supabase.from('price_rules').select('*'))];
 
       if ((user?.role === 'reception' || user?.level === 5) || (user?.ownerId && user.ownerId !== user.id)) {
-        promises.push(safeFetch(supabase.rpc('get_price_rules_for_reception')));
+        pricePromises.push(safeFetch(supabase.rpc('get_price_rules_for_reception')));
         if (targetUserId) {
-          promises.push(safeFetch(supabase.rpc('get_price_rules_for_reception', { p_owner_profile_id: targetUserId })));
-          promises.push(safeFetch(supabase.rpc('get_all_prices_bypass_rls', { p_user_id: targetUserId })));
+          pricePromises.push(safeFetch(supabase.rpc('get_price_rules_for_reception', { p_owner_profile_id: targetUserId })));
+          pricePromises.push(safeFetch(supabase.rpc('get_all_prices_bypass_rls', { p_user_id: targetUserId })));
         }
       }
 
-      const results = await Promise.all(promises);
+      // OTIMIZAÇÃO: Executa a busca de exames e de preços em PARALELO
+      const [examsResult, ...priceResults] = await Promise.all([
+        query,
+        ...pricePromises
+      ]);
 
-      results.forEach(res => {
+      if (examsResult.data) {
+        setExams(examsResult.data.map(e => ({
+          id: e.id, date: e.date, petName: e.pet_name, species: e.species, requesterVet: e.requester_vet, 
+          requesterCrmv: e.requester_crmv, modality: e.modality, period: e.period, studies: e.studies, 
+          studyDescription: e.study_description, rxStudies: e.rx_studies, veterinarianId: e.veterinarian_id, 
+          clinicId: e.clinic_id, machineOwner: e.machine_owner, totalValue: e.total_value, 
+          repasseProfessional: e.repasse_professional, repasseClinic: e.repasse_clinic, createdAt: e.created_at, 
+          reportContent: e.report_content, reportImages: e.report_images, status: e.status
+        })));
+      }
+
+      let pricesData: any[] = [];
+      priceResults.forEach(res => {
         if (res && res.data) {
           pricesData.push(...res.data);
         }
       });
-    } catch (err) {
-      console.error("Erro ao buscar regras de preço:", err);
-    }
 
-    const uniquePrices = new Map();
-    pricesData.forEach(p => {
-      if (!p.owner_id || p.owner_id === targetUserId) {
-        uniquePrices.set(p.id, p);
+      const uniquePrices = new Map();
+      pricesData.forEach(p => {
+        if (!p.owner_id || p.owner_id === targetUserId) {
+          uniquePrices.set(p.id, p);
+        }
+      });
+      pricesData = Array.from(uniquePrices.values());
+
+      if (pricesData && pricesData.length > 0) {
+        setPriceRules(pricesData.map(p => ({
+          id: p.id, 
+          ownerId: p.owner_id,
+          clinicId: p.clinic_id || '', 
+          veterinarianId: p.veterinarian_id || '',
+          modality: p.modality, 
+          period: p.period, 
+          label: p.label, 
+          periodLabel: p.period_label, 
+          valor: p.valor, 
+          repasseProfessional: p.repasse_professional, 
+          repasseClinic: p.repasse_clinic, 
+          taxaExtra: p.taxa_extra, 
+          taxaExtraProfessional: p.taxa_extra_professional, 
+          taxaExtraClinic: p.taxa_extra_clinic, 
+          observacoes: p.observacoes
+        })));
+      } else {
+        setPriceRules([]);
       }
-    });
-    pricesData = Array.from(uniquePrices.values());
 
-    if (pricesData && pricesData.length > 0) {
-      setPriceRules(pricesData.map(p => ({
-        id: p.id, 
-        ownerId: p.owner_id,
-        clinicId: p.clinic_id || '', 
-        veterinarianId: p.veterinarian_id || '',
-        modality: p.modality, 
-        period: p.period, 
-        label: p.label, 
-        periodLabel: p.period_label, 
-        valor: p.valor, 
-        repasseProfessional: p.repasse_professional, 
-        repasseClinic: p.repasse_clinic, 
-        taxaExtra: p.taxa_extra, 
-        taxaExtraProfessional: p.taxa_extra_professional, 
-        taxaExtraClinic: p.taxa_extra_clinic, 
-        observacoes: p.observacoes
-      })));
-    } else {
-      setPriceRules([]);
+    } catch (err) {
+      console.error("Erro geral no fetchData:", err);
+    } finally {
+      setIsLoadingData(false);
     }
-
-    setIsLoadingData(false);
   };
 
   useEffect(() => {
@@ -710,11 +711,9 @@ export const OperationalDashboard = () => {
     try {
       const branding = getBrandingForExam(exams[0] || {} as Exam);
       
-      // Mapeia os nomes dos veterinários e clínicas para uso no PDF
       const vetNamesMap = veterinarians.reduce((acc, v) => ({...acc, [v.id]: v.name}), {} as Record<string, string>);
       const clinicNamesMap = clinics.reduce((acc, c) => ({...acc, [c.id]: c.name}), {} as Record<string, string>);
       
-      // Agrupa por veterinário se o filtro for "Geral"
       const groupByVet = reportPartnerFilter === 'all';
 
       await generatePDFReport(
@@ -1023,7 +1022,8 @@ export const OperationalDashboard = () => {
     setCopyFromScope(''); 
   };
 
-  const copyAvailableVets = availableVeterinarians.filter(v => v.profileId !== (user?.ownerId || user?.id));
+  // REMOVIDO o filtro que escondia o próprio usuário da lista
+  const copyAvailableVets = availableVeterinarians;
 
   const duplicateRule = useMemo(() => {
     const normalizeId = (id?: string | null) => (!id || id === 'default') ? '' : id;
@@ -1171,7 +1171,6 @@ export const OperationalDashboard = () => {
                     exams
                       .filter(e => e.petName.toLowerCase().includes(filterPet.toLowerCase()))
                       .map(exam => {
-                        // Verifica se o usuário atual é o veterinário deste exame ou um Admin
                         const isMyExam = loggedUserEntity?.type === 'vet' && loggedUserEntity.id === exam.veterinarianId;
                         const canEditThisReport = canEditReports && (isMyExam || user?.level === 1);
 
@@ -1559,7 +1558,6 @@ export const OperationalDashboard = () => {
                   <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="bg-transparent text-sm outline-none text-gray-700" />
                 </div>
                 
-                {/* Novo Filtro de Parceiro */}
                 <div className="bg-gray-50 p-2 rounded-lg border border-gray-200 flex gap-2 items-center">
                   <Filter className="w-4 h-4 text-gray-500" />
                   <select 
@@ -1861,7 +1859,7 @@ export const OperationalDashboard = () => {
                 )}
 
                 {copyAvailableVets.length > 0 && (
-                  <optgroup label="Veterinários Parceiros">
+                  <optgroup label="Veterinários">
                     {copyAvailableVets.map(v => (
                       <option key={`vet|${v.id}`} value={`vet|${v.id}`}>🩺 {v.name}</option>
                     ))}
@@ -1906,7 +1904,7 @@ export const OperationalDashboard = () => {
                       </optgroup>
                     )}
                     {copyAvailableVets.length > 0 && (
-                      <optgroup label="Veterinários Parceiros">
+                      <optgroup label="Veterinários">
                         {copyAvailableVets.map(v => (
                           <option key={`vet|${v.id}`} value={`vet|${v.id}`}>🩺 {v.name}</option>
                         ))}
@@ -1940,7 +1938,7 @@ export const OperationalDashboard = () => {
                       {copyAvailableVets
                         .filter(v => `vet|${v.id}` !== copyFromScope)
                         .length > 0 && (
-                        <optgroup label="Veterinários Parceiros">
+                        <optgroup label="Veterinários">
                           {copyAvailableVets
                             .filter(v => `vet|${v.id}` !== copyFromScope)
                             .map(v => (
