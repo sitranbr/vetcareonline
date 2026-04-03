@@ -112,7 +112,7 @@ export const AdminSettings = () => {
 
       // 2. Persiste no Banco de Dados usando a nova RPC segura
       // A função 'save_company_settings' foi criada na migração para ignorar RLS estrito
-      const { error } = await supabase.rpc('save_company_settings', {
+      const { data, error } = await supabase.rpc('save_company_settings', {
         p_name: companyForm.clinicName,
         p_document: companyForm.document,
         p_phone: companyForm.phone,
@@ -122,6 +122,11 @@ export const AdminSettings = () => {
       });
 
       if (error) throw error;
+      
+      // Tratamento para evitar falhas silenciosas caso a RPC retorne um erro mapeado no JSONB
+      if (data && typeof data === 'object' && data.success === false) {
+         throw new Error(data.message || 'Falha ao salvar as configurações no banco de dados.');
+      }
 
       setMessage({ type: 'success', text: 'Dados da empresa salvos com sucesso!' });
     } catch (err: any) {
