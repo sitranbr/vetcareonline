@@ -181,7 +181,7 @@ export const generatePDFReport = async (exams: Exam[], user: User, startDate: st
   doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
   doc.text('Resumo Financeiro', 18, startY + 8);
   
-  // Ajuste de tabulação (mais próximo)
+  // Ajuste de tabulação (Mais espaçado para evitar sobreposição)
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
@@ -190,33 +190,33 @@ export const generatePDFReport = async (exams: Exam[], user: User, startDate: st
   doc.text(totalExams.toString(), 44, startY + 18);
   
   doc.setFont('helvetica', 'normal');
-  doc.text('Valor Total:', 60, startY + 18);
+  doc.text('Valor Total:', 75, startY + 18);
   doc.setFont('helvetica', 'bold');
-  doc.text(formatMoney(totalValue), 80, startY + 18);
+  doc.text(formatMoney(totalValue), 95, startY + 18);
 
   if (canViewFinancials) {
     doc.setFont('helvetica', 'normal');
-    doc.text('ISS (5%):', 110, startY + 18);
+    doc.text('ISS (5%):', 140, startY + 18);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
-    doc.text(formatMoney(totalISS), 128, startY + 18);
+    doc.text(formatMoney(totalISS), 158, startY + 18);
     
     const row2Y = startY + 28;
     doc.setFont('helvetica', 'normal');
-    doc.text('R. Profissional:', 18, row2Y);
+    doc.text('Rep. ao Profissional:', 18, row2Y);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
     doc.text(formatMoney(totalRepasseAndre), 44, row2Y);
     
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
-    doc.text('R. Clínica:', 60, row2Y);
+    doc.text('Rep. à Clínica:', 75, row2Y);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
-    doc.text(formatMoney(totalRepasseUnivet), 80, row2Y);
+    doc.text(formatMoney(totalRepasseUnivet), 95, row2Y);
   }
 
-  // Adicionada a coluna "Solicitante"
+  // Colunas da Tabela
   const tableHeaders = ['Data', 'PET', 'Solicitante', 'Modalidade', 'Período', 'Máquina', 'Valor'];
   if (canViewFinancials) tableHeaders.push('R. Prof', 'R. Clínica');
 
@@ -228,7 +228,7 @@ export const generatePDFReport = async (exams: Exam[], user: User, startDate: st
     const row = [
       format(parseISO(exam.date), 'dd/MM/yyyy'),
       exam.petName,
-      exam.requesterVet || '-', // Adicionado o solicitante aqui
+      exam.requesterVet || '-',
       modalityText,
       getPeriodLabel(exam.period),
       exam.machineOwner === 'professional' ? 'Profissional' : 'Clínica',
@@ -251,13 +251,12 @@ export const generatePDFReport = async (exams: Exam[], user: User, startDate: st
     bodyStyles: { fontSize: 8, textColor: COLORS.text },
     columnStyles: { 
       0: { halign: 'center' }, 
-      4: { halign: 'center' }, // Período agora é o índice 4
-      6: { halign: 'right', fontStyle: 'bold' }, // Valor agora é o índice 6
-      7: { halign: 'right', textColor: COLORS.primary }, // R. Prof
-      8: { halign: 'right', textColor: COLORS.dark } // R. Clínica
+      4: { halign: 'center' }, 
+      6: { halign: 'right', fontStyle: 'bold' }, 
+      7: { halign: 'right', textColor: COLORS.primary }, 
+      8: { halign: 'right', textColor: COLORS.dark } 
     },
     alternateRowStyles: { fillColor: [249, 250, 251] },
-    // Adicionado um espaço vazio extra para alinhar os totais com as novas colunas
     foot: canViewFinancials 
       ? [[ 'TOTAIS', '', '', '', '', '', formatMoney(totalValue), formatMoney(totalRepasseAndre), formatMoney(totalRepasseUnivet) ]] 
       : [[ 'TOTAL', '', '', '', '', '', formatMoney(totalValue) ]],
@@ -372,7 +371,7 @@ export const generateReceipt = async (exam: Exam, user: User, branding: Branding
 export const generateExamReport = async (
   exam: Exam, 
   branding: BrandingInfo, 
-  responsibleVet?: Veterinarian, // Objeto completo do veterinário responsável
+  responsibleVet?: Veterinarian, 
   studyId?: string
 ) => {
   const doc = new jsPDF();
@@ -392,46 +391,38 @@ export const generateExamReport = async (
 
   await addHeader(doc, 'LAUDO MÉDICO', branding);
 
-  // CAIXA DE INFORMAÇÕES DO PACIENTE E EXAME
-  // Aumentada a altura para caber mais informações
   const boxTop = 38;
   const boxHeight = 35; 
   
   doc.setFillColor(COLORS.lightBg[0], COLORS.lightBg[1], COLORS.lightBg[2]);
   doc.roundedRect(14, boxTop, 182, boxHeight, 2, 2, 'F');
   
-  // Reseta cor do texto para preto/cinza escuro para garantir visibilidade
   doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
   doc.setFontSize(10);
 
-  // --- COLUNA 1 (Esquerda): Dados do Paciente e Exame ---
   const col1X = 18;
   const labelX1 = col1X;
-  const valueX1 = col1X + 22; // Margem para o valor
+  const valueX1 = col1X + 22; 
   
   let currentY = boxTop + 7;
 
-  // Paciente
   doc.setFont('helvetica', 'bold');
   doc.text('Paciente:', labelX1, currentY);
   doc.setFont('helvetica', 'normal');
   doc.text(exam.petName || 'Não informado', valueX1, currentY);
 
-  // Espécie
   currentY += 6;
   doc.setFont('helvetica', 'bold');
   doc.text('Espécie:', labelX1, currentY);
   doc.setFont('helvetica', 'normal');
   doc.text(exam.species || '-', valueX1, currentY);
 
-  // ID do Exame
   currentY += 6;
   doc.setFont('helvetica', 'bold');
   doc.text('ID Exame:', labelX1, currentY);
   doc.setFont('helvetica', 'normal');
   doc.text(exam.id.slice(0, 8).toUpperCase(), valueX1, currentY);
 
-  // Exame (Modalidade)
   currentY += 6;
   doc.setFont('helvetica', 'bold');
   doc.text('Exame:', labelX1, currentY);
@@ -441,21 +432,17 @@ export const generateExamReport = async (
   else if (exam.studyDescription) modalityLabel += ` - ${exam.studyDescription}`;
   doc.text(modalityLabel, valueX1, currentY);
 
-
-  // --- COLUNA 2 (Direita): Datas e Profissionais ---
   const col2X = 110;
   const labelX2 = col2X;
   const valueX2 = col2X + 25;
   
-  currentY = boxTop + 7; // Reseta Y para o topo da coluna 2
+  currentY = boxTop + 7; 
 
-  // Data
   doc.setFont('helvetica', 'bold');
   doc.text('Data:', labelX2, currentY);
   doc.setFont('helvetica', 'normal');
   doc.text(format(parseISO(exam.date), "dd/MM/yyyy"), valueX2, currentY);
 
-  // Solicitante
   currentY += 6;
   doc.setFont('helvetica', 'bold');
   doc.text('Solicitante:', labelX2, currentY);
@@ -464,26 +451,19 @@ export const generateExamReport = async (
   if (exam.requesterCrmv) reqText += ` (${exam.requesterCrmv})`;
   doc.text(reqText, valueX2, currentY);
 
-  // Responsável Técnico (Quem assina)
   currentY += 6;
   doc.setFont('helvetica', 'bold');
   doc.text('Responsável:', labelX2, currentY);
   doc.setFont('helvetica', 'normal');
   
-  // LÓGICA DE SELEÇÃO DO RESPONSÁVEL
-  // 1. Se tiver um veterinário específico (responsibleVet), usa ele.
-  // 2. Se não, verifica se o branding (Clínica) tem um "responsibleName" configurado.
-  // 3. Último caso, usa o nome da própria Clínica.
-  
   let respName = responsibleVet?.name;
   let respDoc = responsibleVet?.crmv;
 
   if (!respName) {
-    // Tenta pegar o Responsável Técnico da Clínica
     if ((branding as any).responsibleName) {
        respName = (branding as any).responsibleName;
     } else {
-       respName = branding.name; // Fallback para Razão Social
+       respName = branding.name; 
     }
     respDoc = branding.document;
   }
@@ -493,8 +473,6 @@ export const generateExamReport = async (
   
   doc.text(respText, valueX2, currentY);
 
-  // Local (Se branding for Clínica)
-  // Se o branding tem nome diferente do responsável, mostra onde foi feito
   if (branding.name !== respName) {
     currentY += 6;
     doc.setFont('helvetica', 'bold');
@@ -503,7 +481,6 @@ export const generateExamReport = async (
     doc.text(branding.name, valueX2, currentY);
   }
 
-  // --- CONTEÚDO DO LAUDO ---
   const contentStartY = boxTop + boxHeight + 15;
 
   doc.setFontSize(12);
@@ -513,7 +490,6 @@ export const generateExamReport = async (
 
   renderHtmlToPdf(doc, content || '<p>Laudo sem conteúdo textual.</p>', 14, contentStartY + 10, 180);
 
-  // --- ASSINATURA ---
   const pageHeight = doc.internal.pageSize.height;
   const signatureY = pageHeight - 40;
   
@@ -524,7 +500,6 @@ export const generateExamReport = async (
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
   
-  // Nome na assinatura
   doc.text(respName || '', 105, signatureY + 5, { align: 'center' });
   
   doc.setFontSize(9);
@@ -533,7 +508,6 @@ export const generateExamReport = async (
     doc.text(`CRMV: ${respDoc}`, 105, signatureY + 10, { align: 'center' });
   }
 
-  // --- IMAGENS EM GRADE (8 por página) ---
   if (images && images.length > 0) {
     const imagesPerPage = 8; 
     
