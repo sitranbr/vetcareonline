@@ -43,6 +43,7 @@ export const OperationalDashboard = () => {
 
   const [reportStartDate, setReportStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [reportEndDate, setReportEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [reportPartnerFilter, setReportPartnerFilter] = useState('all'); // Novo estado para o filtro de parceiro
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   const [reportEditorState, setReportEditorState] = useState<{ isOpen: boolean; exam: Exam | null; studyId?: string; }>({ isOpen: false, exam: null });
@@ -704,6 +705,34 @@ export const OperationalDashboard = () => {
     }
   };
 
+  const handleExportPDF = async () => {
+    setIsGeneratingPdf(true);
+    try {
+      const branding = getBrandingForExam(exams[0] || {} as Exam);
+      
+      // Mapeia os nomes dos veterinários e clínicas para uso no PDF
+      const vetNamesMap = veterinarians.reduce((acc, v) => ({...acc, [v.id]: v.name}), {} as Record<string, string>);
+      const clinicNamesMap = clinics.reduce((acc, c) => ({...acc, [c.id]: c.name}), {} as Record<string, string>);
+      
+      // Agrupa por veterinário se o filtro for "Geral"
+      const groupByVet = reportPartnerFilter === 'all';
+
+      await generatePDFReport(
+        filteredExamsForReport, 
+        user!, 
+        reportStartDate, 
+        reportEndDate, 
+        branding,
+        { groupByVet, vetNames: vetNamesMap, clinicNames: clinicNamesMap }
+      );
+    } catch (error) {
+      console.error("Erro ao gerar PDF:", error);
+      alert("Erro ao gerar PDF.");
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
   const handlePrintReport = async (exam: Exam) => {
     setIsGeneratingPdf(true);
     try {
@@ -840,9 +869,17 @@ export const OperationalDashboard = () => {
   const filteredExamsForReport = useMemo(() => {
     return exams.filter(e => {
       const d = e.date;
-      return d >= reportStartDate && d <= reportEndDate;
+      if (d < reportStartDate || d > reportEndDate) return false;
+      
+      if (reportPartnerFilter !== 'all') {
+        const [type, id] = reportPartnerFilter.split('|');
+        if (type === 'vet' && e.veterinarianId !== id) return false;
+        if (type === 'clinic' && e.clinicId !== id) return false;
+      }
+      
+      return true;
     });
-  }, [exams, reportStartDate, reportEndDate]);
+  }, [exams, reportStartDate, reportEndDate, reportPartnerFilter]);
 
   const reportStats = useMemo(() => {
     return filteredExamsForReport.reduce((acc, exam) => ({
@@ -1514,15 +1551,43 @@ export const OperationalDashboard = () => {
         {activeTab === 'reports' && canViewFinancials && (
           <div className="p-6">
             <div className="flex justify-between items-center mb-6">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 flex-wrap">
                 <div className="bg-gray-50 p-2 rounded-lg border border-gray-200 flex gap-2 items-center">
                   <Calendar className="w-4 h-4 text-gray-500" />
                   <input type="date" value={reportStartDate} onChange={e => setReportStartDate(e.target.value)} className="bg-transparent text-sm outline-none text-gray-700" />
                   <span className="text-gray-400 text-xs">até</span>
                   <input type="date" value={reportEndDate} onChange={e => setReportEndDate(e.target.value)} className="bg-transparent text-sm outline-none text-gray-700" />
                 </div>
-                <button onClick={() => generatePDFReport(filteredExamsForReport, user!, reportStartDate, reportEndDate, getBrandingForExam(exams[0] || {}))} className="bg-petcare-dark text-white px-4 py-2 rounded-lg font-bold hover:bg-petcare-DEFAULT transition-colors flex items-center gap-2 shadow-md">
-                  <FileText className="w-4 h-4" /> Exportar PDF
+                
+                {/* Novo Filtro de Parceiro */}
+                <div className="bg-gray-50 p-2 rounded-lg border border-gray-200 flex gap-2 items-center">
+                  <Filter className="w-4 h-4 text-gray-500" />
+                  <select 
+                    value={reportPartnerFilter} 
+                    onChange={e => setReportPartnerFilter(e.target.value)}
+                    className="bg-transparent text-sm outline-none text-gray-700"
+                  >
+                    <option value="all">Geral (Todos)</option>
+                    {loggedUserEntity?.type === 'clinic' || user?.level === 1 ? (
+                      <optgroup label="Veterinários">
+                        {availableVeterinarians.map(v => <option key={v.id} value={`vet|${v.id}`}>{v.name}</option>)}
+                      </optgroup>
+                    ) : null}
+                    {loggedUserEntity?.type === 'vet' || user?.level === 1 ? (
+                      <optgroup label="Clínicas">
+                        {availableClinicsForVet.map(c => <option key={c.id} value={`clinic|${c.id}`}>{c.name}</option>)}
+                      </optgroup>
+                    ) : null}
+                  </select>
+                </div>
+
+                <button 
+                  onClick={handleExportPDF} 
+                  disabled={isGeneratingPdf}
+                  className="bg-petcare-dark text-white px-4 py-2 rounded-lg font-bold hover:bg-petcare-DEFAULT transition-colors flex items-center gap-2 shadow-md disabled:opacity-70"
+                >
+                  {isGeneratingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                  Exportar PDF
                 </button>
               </div>
             </div>

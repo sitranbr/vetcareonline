@@ -145,7 +145,14 @@ const renderHtmlToPdf = (doc: jsPDF, html: string, startX: number, startY: numbe
 };
 
 // Relatório Financeiro
-export const generatePDFReport = async (exams: Exam[], user: User, startDate: string, endDate: string, branding: BrandingInfo) => {
+export const generatePDFReport = async (
+  exams: Exam[], 
+  user: User, 
+  startDate: string, 
+  endDate: string, 
+  branding: BrandingInfo,
+  options?: { groupByVet?: boolean, vetNames?: Record<string, string>, clinicNames?: Record<string, string> }
+) => {
   const doc = new jsPDF();
   const canViewFinancials = user.level === 1 || user.level === 2 || user.permissions?.view_financials;
   await addHeader(doc, 'Relatório de Exames', branding);
@@ -174,14 +181,14 @@ export const generatePDFReport = async (exams: Exam[], user: User, startDate: st
   const startY = 60;
   const boxHeight = canViewFinancials ? 35 : 25;
   
+  // Caixa de Resumo Financeiro Geral
   doc.setFillColor(COLORS.lightBg[0], COLORS.lightBg[1], COLORS.lightBg[2]);
   doc.roundedRect(14, startY, 182, boxHeight, 3, 3, 'F');
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
-  doc.text('Resumo Financeiro', 18, startY + 8);
+  doc.text('Resumo Financeiro Geral', 18, startY + 8);
   
-  // Ajuste de tabulação (Mais espaçado para evitar sobreposição)
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
@@ -216,51 +223,105 @@ export const generatePDFReport = async (exams: Exam[], user: User, startDate: st
     doc.text(formatMoney(totalRepasseUnivet), 95, row2Y);
   }
 
-  // Colunas da Tabela
+  if (exams.length === 0) {
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
+    doc.text('Nenhum exame encontrado no período selecionado.', 14, startY + boxHeight + 20);
+    window.open(URL.createObjectURL(doc.output('blob')), '_blank');
+    return;
+  }
+
+  // Agrupamento de Exames
+  let groups: { title?: string, exams: Exam[] }[] = [];
+  
+  if (options?.groupByVet) {
+    const grouped = exams.reduce((acc, exam) => {
+      const vetId = exam.veterinarianId;
+      if (!acc[vetId]) acc[vetId] = [];
+      acc[vetId].push(exam);
+      return acc;
+    }, {} as Record<string, Exam[]>);
+    
+    groups = Object.entries(grouped).map(([vetId, vetExams]) => ({
+      title: `Veterinário(a): ${options.vetNames?.[vetId] || 'Não Identificado'}`,
+      exams: vetExams
+    }));
+    
+    // Ordena os grupos alfabeticamente pelo nome do veterinário
+    groups.sort((a, b) => a.title!.localeCompare(b.title!));
+  } else {
+    groups = [{ exams }];
+  }
+
+  let currentY = startY + boxHeight + 10;
+
   const tableHeaders = ['Data', 'PET', 'Solicitante', 'Modalidade', 'Período', 'Máquina', 'Valor'];
   if (canViewFinancials) tableHeaders.push('R. Prof', 'R. Clínica');
 
-  const tableBody = exams.map(exam => {
-    let modalityText = getModalityLabel(exam.modality);
-    if (exam.studies && exam.studies > 1) modalityText += ` (${exam.studies}x)`;
-    if (exam.studyDescription) modalityText += `\n${exam.studyDescription}`;
-
-    const row = [
-      format(parseISO(exam.date), 'dd/MM/yyyy'),
-      exam.petName,
-      exam.requesterVet || '-',
-      modalityText,
-      getPeriodLabel(exam.period),
-      exam.machineOwner === 'professional' ? 'Profissional' : 'Clínica',
-      formatMoney(exam.totalValue)
-    ];
-
-    if (canViewFinancials) {
-      row.push(formatMoney(exam.repasseProfessional));
-      row.push(formatMoney(exam.repasseClinic));
+  groups.forEach(group => {
+    if (group.title) {
+      if (currentY > doc.internal.pageSize.height - 40) {
+        doc.addPage();
+        currentY = 20;
+      }
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+      doc.text(group.title, 14, currentY);
+      currentY += 4;
     }
-    return row;
-  });
 
-  autoTable(doc, {
-    startY: startY + boxHeight + 10,
-    head: [tableHeaders],
-    body: tableBody,
-    theme: 'grid',
-    headStyles: { fillColor: [COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]], textColor: 255, fontSize: 9, fontStyle: 'bold', halign: 'center' },
-    bodyStyles: { fontSize: 8, textColor: COLORS.text },
-    columnStyles: { 
-      0: { halign: 'center' }, 
-      4: { halign: 'center' }, 
-      6: { halign: 'right', fontStyle: 'bold' }, 
-      7: { halign: 'right', textColor: COLORS.primary }, 
-      8: { halign: 'right', textColor: COLORS.dark } 
-    },
-    alternateRowStyles: { fillColor: [249, 250, 251] },
-    foot: canViewFinancials 
-      ? [[ 'TOTAIS', '', '', '', '', '', formatMoney(totalValue), formatMoney(totalRepasseAndre), formatMoney(totalRepasseUnivet) ]] 
-      : [[ 'TOTAL', '', '', '', '', '', formatMoney(totalValue) ]],
-    footStyles: { fillColor: [COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]], textColor: 255, fontStyle: 'bold', halign: 'right' }
+    const tableBody = group.exams.map(exam => {
+      let modalityText = getModalityLabel(exam.modality);
+      if (exam.studies && exam.studies > 1) modalityText += ` (${exam.studies}x)`;
+      if (exam.studyDescription) modalityText += `\n${exam.studyDescription}`;
+
+      const row = [
+        format(parseISO(exam.date), 'dd/MM/yyyy'),
+        exam.petName,
+        exam.requesterVet || '-',
+        modalityText,
+        getPeriodLabel(exam.period),
+        exam.machineOwner === 'professional' ? 'Profissional' : 'Clínica',
+        formatMoney(exam.totalValue)
+      ];
+
+      if (canViewFinancials) {
+        row.push(formatMoney(exam.repasseProfessional));
+        row.push(formatMoney(exam.repasseClinic));
+      }
+      return row;
+    });
+
+    const subTotalValue = group.exams.reduce((acc, curr) => acc + curr.totalValue, 0);
+    const subTotalProf = group.exams.reduce((acc, curr) => acc + curr.repasseProfessional, 0);
+    const subTotalClinic = group.exams.reduce((acc, curr) => acc + curr.repasseClinic, 0);
+
+    const footRow = canViewFinancials 
+      ? [[ 'SUBTOTAL', '', '', '', '', '', formatMoney(subTotalValue), formatMoney(subTotalProf), formatMoney(subTotalClinic) ]] 
+      : [[ 'SUBTOTAL', '', '', '', '', '', formatMoney(subTotalValue) ]];
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [tableHeaders],
+      body: tableBody,
+      theme: 'grid',
+      headStyles: { fillColor: [COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]], textColor: 255, fontSize: 9, fontStyle: 'bold', halign: 'center' },
+      bodyStyles: { fontSize: 8, textColor: COLORS.text },
+      columnStyles: { 
+        0: { halign: 'center' }, 
+        4: { halign: 'center' }, 
+        6: { halign: 'right', fontStyle: 'bold' }, 
+        7: { halign: 'right', textColor: COLORS.primary }, 
+        8: { halign: 'right', textColor: COLORS.dark } 
+      },
+      alternateRowStyles: { fillColor: [249, 250, 251] },
+      foot: footRow,
+      footStyles: { fillColor: [COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]], textColor: 255, fontStyle: 'bold', halign: 'right' }
+    });
+
+    currentY = (doc as any).lastAutoTable.finalY + 10;
   });
 
   const pageCount = (doc as any).internal.getNumberOfPages();
