@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
-import { Save, Building2, Mail, Phone, MapPin, FileText, Upload, Lock, User, AlertCircle, CheckCircle2, Shield, Loader2 } from 'lucide-react';
+import { Save, Building2, Mail, Phone, MapPin, FileText, Upload, Lock, User, AlertCircle, CheckCircle2, Shield, Loader2, PenTool } from 'lucide-react';
 import { uploadBase64Image } from '../utils/storage';
 import { supabase } from '../lib/supabase';
 
@@ -14,12 +14,14 @@ export const AdminSettings = () => {
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const sigInputRef = useRef<HTMLInputElement>(null);
 
   const [profileForm, setProfileForm] = useState({
     name: '',
     email: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    signatureUrl: ''
   });
 
   const [companyForm, setCompanyForm] = useState({
@@ -37,12 +39,13 @@ export const AdminSettings = () => {
     if (!user?.id || activeTab !== 'profile') return;
     let isMounted = true;
     const loadProfile = async () => {
-      const { data } = await supabase.from('profiles').select('name, email').eq('id', user.id).maybeSingle();
+      const { data } = await supabase.from('profiles').select('name, email, signature_url').eq('id', user.id).maybeSingle();
       if (isMounted) {
         setProfileForm(prev => ({
           ...prev,
           name: data?.name ?? user.name ?? '',
-          email: data?.email ?? user.email ?? ''
+          email: data?.email ?? user.email ?? '',
+          signatureUrl: data?.signature_url ?? user.signatureUrl ?? ''
         }));
       }
     };
@@ -76,7 +79,8 @@ export const AdminSettings = () => {
     const { error } = await updateAccount({
       name: profileForm.name,
       email: profileForm.email,
-      password: profileForm.password || undefined
+      password: profileForm.password || undefined,
+      signatureUrl: profileForm.signatureUrl
     });
 
     if (error) {
@@ -152,6 +156,35 @@ export const AdminSettings = () => {
           setIsLoading(false);
           if (fileInputRef.current) {
             fileInputRef.current.value = '';
+          }
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSignatureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64 = reader.result as string;
+        setIsLoading(true);
+        try {
+          const url = await uploadBase64Image(base64, 'public', `signatures/${user?.id}_${Date.now()}`);
+          if (url) {
+            setProfileForm(prev => ({ ...prev, signatureUrl: url }));
+            setMessage({ type: 'success', text: 'Assinatura carregada! Clique em "Salvar Alterações" para confirmar.' });
+          } else {
+            setMessage({ type: 'error', text: 'Erro ao fazer upload da imagem. Tente novamente.' });
+          }
+        } catch (err: any) {
+          console.error("Erro no upload da assinatura:", err);
+          setMessage({ type: 'error', text: 'Erro de conexão ao enviar imagem.' });
+        } finally {
+          setIsLoading(false);
+          if (sigInputRef.current) {
+            sigInputRef.current.value = '';
           }
         }
       };
@@ -269,6 +302,47 @@ export const AdminSettings = () => {
                     className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-petcare-light/50 outline-none transition-all"
                     placeholder="Confirme a nova senha"
                   />
+                </div>
+              </div>
+              
+              {/* Upload de Assinatura Eletrônica */}
+              <div className="md:col-span-2 mt-2 pt-4 border-t border-gray-100">
+                <label className="block text-sm font-medium text-gray-700 mb-3">Assinatura Eletrônica (Para Laudos)</label>
+                <div className="flex items-center gap-6 p-4 bg-gray-50 rounded-xl border border-gray-100">
+                  <div className="w-40 h-20 bg-white rounded-lg border border-gray-200 flex items-center justify-center overflow-hidden relative group shadow-sm">
+                    {profileForm.signatureUrl ? (
+                      <img src={profileForm.signatureUrl} alt="Assinatura" className="w-full h-full object-contain p-1" />
+                    ) : (
+                      <PenTool className="w-6 h-6 text-gray-300" />
+                    )}
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Upload className="w-6 h-6 text-white" />
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleSignatureUpload}
+                      className="absolute inset-0 opacity-0 cursor-pointer"
+                      title="Alterar Assinatura"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-500 mb-3">
+                      Recomendado: Imagem PNG com fundo transparente contendo apenas a sua assinatura. 
+                      Ela será inserida automaticamente acima do seu nome nos laudos gerados em PDF.
+                    </p>
+                    <label className="inline-flex items-center px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors shadow-sm hover:shadow">
+                      <Upload className="w-4 h-4 mr-2" />
+                      Escolher Arquivo
+                      <input
+                        ref={sigInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleSignatureUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>

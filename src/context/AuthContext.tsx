@@ -10,7 +10,7 @@ interface AuthContextType {
   logout: () => void;
   register: (user: Omit<User, 'id'>) => Promise<{ user: User | null; error: AuthError | null }>; 
   updateUser: (id: string, data: Partial<User>) => Promise<{ error?: string }>;
-  updateAccount: (data: { name?: string; email?: string; password?: string }) => Promise<{ error?: string }>;
+  updateAccount: (data: { name?: string; email?: string; password?: string; signatureUrl?: string }) => Promise<{ error?: string }>;
   deleteUser: (id: string) => Promise<{ success: boolean; error?: string }>;
   resetPassword: (email: string) => Promise<void>;
   isAuthenticated: boolean;
@@ -147,7 +147,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (profile) {
         const dbUser: User = {
           id: profile.id, email: profile.email, name: profile.name, username: profile.email, role: profile.role, level: profile.level, ownerId: profile.owner_id, partners: profile.partners || null,
-          permissions: profile.permissions || getDefaultPermissions(profile.level)
+          permissions: profile.permissions || getDefaultPermissions(profile.level),
+          signatureUrl: profile.signature_url
         };
         setUser(dbUser);
         await loadLinkedTenants(dbUser);
@@ -165,8 +166,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const { data, error } = await supabase.auth.getSession();
         if (error) {
           if (error.message.includes('Refresh Token') || error.code === 'refresh_token_not_found') {
-            // Apenas limpamos o estado local. O Supabase já limpa o storage internamente.
-            // Não chamamos signOut() aqui para evitar requisições desnecessárias com token inválido.
             setUser(null);
             setCurrentTenant(null);
           }
@@ -211,11 +210,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const refreshProfile = async () => {
     if (!user) return;
     try {
-      const { data: profile } = await supabase.from('profiles').select('id, name, email, role, level, owner_id, partners, permissions').eq('id', user.id).maybeSingle();
+      const { data: profile } = await supabase.from('profiles').select('id, name, email, role, level, owner_id, partners, permissions, signature_url').eq('id', user.id).maybeSingle();
       if (profile) {
         const dbUser: User = {
           id: profile.id, email: profile.email, name: profile.name, username: profile.email, role: profile.role, level: profile.level, ownerId: profile.owner_id, partners: profile.partners || null,
-          permissions: profile.permissions || getDefaultPermissions(profile.level)
+          permissions: profile.permissions || getDefaultPermissions(profile.level),
+          signatureUrl: profile.signature_url
         };
         setUser(dbUser);
         await loadLinkedTenants(dbUser);
@@ -257,7 +257,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (allProfiles) {
         setUsers(allProfiles.map(p => ({
-          id: p.id, name: p.name, email: p.email, username: p.email, role: p.role, level: p.level, ownerId: p.owner_id, partners: p.partners || null, permissions: p.permissions
+          id: p.id, name: p.name, email: p.email, username: p.email, role: p.role, level: p.level, ownerId: p.owner_id, partners: p.partners || null, permissions: p.permissions, signatureUrl: p.signature_url
         })));
       }
     }
@@ -322,7 +322,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return {};
   };
 
-  const updateAccount = async (data: { name?: string; email?: string; password?: string }) => {
+  const updateAccount = async (data: { name?: string; email?: string; password?: string; signatureUrl?: string }) => {
     if (!user) return { error: "Usuário não autenticado" };
     if (data.email && data.email.trim().toLowerCase() !== user.email.trim().toLowerCase()) {
       const { error: emailError } = await supabase.rpc('update_my_email_bypass', { new_email: data.email.trim().toLowerCase() });
@@ -336,9 +336,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const { error: nameError } = await supabase.rpc('update_my_profile_name', { p_name: String(data.name).trim() });
       if (nameError) return { error: nameError.message };
     }
+    if (data.signatureUrl !== undefined) {
+      const { error: sigError } = await supabase.from('profiles').update({ signature_url: data.signatureUrl }).eq('id', user.id);
+      if (sigError) return { error: sigError.message };
+    }
     await refreshUsers();
     await refreshProfile();
-    setUser(prev => prev ? { ...prev, name: data.name ? data.name.trim() : prev.name, email: data.email ? data.email.trim().toLowerCase() : prev.email } : null);
+    setUser(prev => prev ? { 
+      ...prev, 
+      name: data.name ? data.name.trim() : prev.name, 
+      email: data.email ? data.email.trim().toLowerCase() : prev.email,
+      signatureUrl: data.signatureUrl !== undefined ? data.signatureUrl : prev.signatureUrl
+    } : null);
     return {};
   };
 

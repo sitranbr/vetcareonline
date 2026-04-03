@@ -4,6 +4,7 @@ import { Exam, User, BrandingInfo, Veterinarian } from '../types';
 import { formatMoney, getModalityLabel, getPeriodLabel } from './calculations';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { supabase } from '../lib/supabase';
 
 const COLORS = {
   primary: [90, 143, 145], // #5A8F91 (Petcare Default)
@@ -210,14 +211,14 @@ export const generatePDFReport = async (
     
     const row2Y = startY + 28;
     doc.setFont('helvetica', 'normal');
-    doc.text('Profissional:', 18, row2Y);
+    doc.text('R. Profissional:', 18, row2Y);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
     doc.text(formatMoney(totalRepasseAndre), 44, row2Y);
     
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
-    doc.text('Clínica:', 75, row2Y);
+    doc.text('R. Clínica:', 75, row2Y);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
     doc.text(formatMoney(totalRepasseUnivet), 95, row2Y);
@@ -553,6 +554,53 @@ export const generateExamReport = async (
 
   const pageHeight = doc.internal.pageSize.height;
   const signatureY = pageHeight - 40;
+  
+  // Busca a assinatura eletrônica do veterinário responsável
+  let signatureUrl = null;
+  try {
+    let profId = responsibleVet?.profileId;
+    
+    if (!profId && exam.veterinarianId) {
+      const { data: vetData } = await supabase.from('veterinarians').select('profile_id').eq('id', exam.veterinarianId).maybeSingle();
+      profId = vetData?.profile_id;
+    }
+    
+    if (profId) {
+      const { data: profData } = await supabase.from('profiles').select('signature_url').eq('id', profId).maybeSingle();
+      if (profData?.signature_url) {
+        signatureUrl = profData.signature_url;
+      }
+    }
+  } catch (err) {
+    console.error('Erro ao buscar assinatura', err);
+  }
+
+  // Injeta a imagem da assinatura se existir
+  if (signatureUrl) {
+    try {
+      const sigImg = await loadImage(signatureUrl);
+      const imgProps = doc.getImageProperties(sigImg);
+      const imgRatio = imgProps.width / imgProps.height;
+      
+      const maxW = 50;
+      const maxH = 20;
+      let finalW = maxW;
+      let finalH = maxW / imgRatio;
+      
+      if (finalH > maxH) {
+        finalH = maxH;
+        finalW = maxH * imgRatio;
+      }
+      
+      // Centraliza a imagem acima da linha de assinatura
+      const xPos = 105 - (finalW / 2);
+      const yPos = signatureY - finalH - 2; 
+      
+      doc.addImage(sigImg, 'PNG', xPos, yPos, finalW, finalH, undefined, 'FAST');
+    } catch (e) {
+      console.warn('Erro ao carregar imagem da assinatura', e);
+    }
+  }
   
   doc.setDrawColor(150);
   doc.line(70, signatureY, 140, signatureY); 

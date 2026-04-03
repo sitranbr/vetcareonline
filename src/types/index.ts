@@ -77,6 +77,7 @@ export interface User {
   ownerId?: string | null; // ID do "Chefe" (Se for recepção, aponta para o Vet ou Clínica)
   partners?: string[] | null; // IDs dos perfis parceiros (clínicas para vet, vets para clínica)
   permissions: UserPermissions;
+  signatureUrl?: string; // URL da assinatura eletrônica
 }
 
 // Interface para o Seletor de Contexto (Tenant)
