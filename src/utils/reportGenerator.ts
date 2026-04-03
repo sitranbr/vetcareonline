@@ -154,6 +154,15 @@ export const generatePDFReport = async (
   branding: BrandingInfo,
   options?: { groupByVet?: boolean, vetNames?: Record<string, string>, clinicNames?: Record<string, string> }
 ) => {
+  const reportExams = [...exams].sort((a, b) => {
+    const ta = parseISO(a.date).getTime();
+    const tb = parseISO(b.date).getTime();
+    if (Number.isNaN(ta) && Number.isNaN(tb)) return String(a.id).localeCompare(String(b.id));
+    if (Number.isNaN(ta)) return 1;
+    if (Number.isNaN(tb)) return -1;
+    return ta - tb || String(a.id).localeCompare(String(b.id));
+  });
+
   const doc = new jsPDF();
   const canViewFinancials = user.level === 1 || user.level === 2 || user.permissions?.view_financials;
   await addHeader(doc, 'Relatório de Exames', branding);
@@ -173,10 +182,10 @@ export const generatePDFReport = async (
   doc.text(`${branding.name} | ${branding.document || ''}`, 195, 42, { align: 'right' });
   doc.text(branding.address || '', 195, 47, { align: 'right' });
 
-  const totalExams = exams.length;
-  const totalValue = exams.reduce((acc, curr) => acc + curr.totalValue, 0);
-  const totalRepasseAndre = exams.reduce((acc, curr) => acc + curr.repasseProfessional, 0);
-  const totalRepasseUnivet = exams.reduce((acc, curr) => acc + curr.repasseClinic, 0);
+  const totalExams = reportExams.length;
+  const totalValue = reportExams.reduce((acc, curr) => acc + curr.totalValue, 0);
+  const totalRepasseAndre = reportExams.reduce((acc, curr) => acc + curr.repasseProfessional, 0);
+  const totalRepasseUnivet = reportExams.reduce((acc, curr) => acc + curr.repasseClinic, 0);
   const totalISS = totalValue * 0.05;
 
   const startY = 60;
@@ -224,7 +233,7 @@ export const generatePDFReport = async (
     doc.text(formatMoney(totalRepasseUnivet), 95, row2Y);
   }
 
-  if (exams.length === 0) {
+  if (reportExams.length === 0) {
     doc.setFontSize(12);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
@@ -237,7 +246,7 @@ export const generatePDFReport = async (
   let groups: { title?: string, exams: Exam[] }[] = [];
   
   if (options?.groupByVet) {
-    const grouped = exams.reduce((acc, exam) => {
+    const grouped = reportExams.reduce((acc, exam) => {
       const vetId = exam.veterinarianId;
       if (!acc[vetId]) acc[vetId] = [];
       acc[vetId].push(exam);
@@ -252,7 +261,7 @@ export const generatePDFReport = async (
     // Ordena os grupos alfabeticamente pelo nome do veterinário
     groups.sort((a, b) => a.title!.localeCompare(b.title!));
   } else {
-    groups = [{ exams }];
+    groups = [{ exams: reportExams }];
   }
 
   let currentY = startY + boxHeight + 10;

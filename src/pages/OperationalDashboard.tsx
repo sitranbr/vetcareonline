@@ -490,6 +490,8 @@ export const OperationalDashboard = () => {
   }, [currentTenant, isPartnerView, loggedUserEntity, veterinarians, clinics, user, availableClinicsForVet]);
 
   const [filterPet, setFilterPet] = useState('');
+  /** Ordenação da lista de exames por data (mais recente = padrão, alinhado ao carregamento atual). */
+  const [examListDateOrder, setExamListDateOrder] = useState<'desc' | 'asc'>('desc');
   
   const canViewFinancials = user?.permissions?.view_financials && !isPartnerView;
   const canManagePrices = user?.permissions?.manage_prices && !isPartnerView;
@@ -937,17 +939,25 @@ export const OperationalDashboard = () => {
   };
 
   const filteredExamsForReport = useMemo(() => {
-    return exams.filter(e => {
+    const filtered = exams.filter(e => {
       const d = e.date;
       if (d < reportStartDate || d > reportEndDate) return false;
-      
+
       if (reportPartnerFilter !== 'all') {
         const [type, id] = reportPartnerFilter.split('|');
         if (type === 'vet' && e.veterinarianId !== id) return false;
         if (type === 'clinic' && e.clinicId !== id) return false;
       }
-      
+
       return true;
+    });
+    return [...filtered].sort((a, b) => {
+      const ta = parseISO(a.date).getTime();
+      const tb = parseISO(b.date).getTime();
+      if (Number.isNaN(ta) && Number.isNaN(tb)) return String(a.id).localeCompare(String(b.id));
+      if (Number.isNaN(ta)) return 1;
+      if (Number.isNaN(tb)) return -1;
+      return ta - tb || String(a.id).localeCompare(String(b.id));
     });
   }, [exams, reportStartDate, reportEndDate, reportPartnerFilter]);
 
@@ -960,16 +970,23 @@ export const OperationalDashboard = () => {
     }), { totalArrecadado: 0, totalRepasseProf: 0, totalRepasseClinic: 0, count: 0 });
   }, [filteredExamsForReport]);
 
+  const filteredExamsForList = useMemo(() => {
+    const filtered = exams.filter(e => e.petName.toLowerCase().includes(filterPet.toLowerCase()));
+    return [...filtered].sort((a, b) => {
+      const ta = parseISO(a.date).getTime();
+      const tb = parseISO(b.date).getTime();
+      return examListDateOrder === 'desc' ? tb - ta : ta - tb;
+    });
+  }, [exams, filterPet, examListDateOrder]);
+
   const listStats = useMemo(() => {
-    const filteredBySearch = exams.filter(e => e.petName.toLowerCase().includes(filterPet.toLowerCase()));
-    
-    return filteredBySearch.reduce((acc, exam) => ({
+    return filteredExamsForList.reduce((acc, exam) => ({
       totalArrecadado: acc.totalArrecadado + exam.totalValue,
       totalRepasseProf: acc.totalRepasseProf + exam.repasseProfessional,
       totalRepasseClinic: acc.totalRepasseClinic + exam.repasseClinic,
       count: acc.count + 1
     }), { totalArrecadado: 0, totalRepasseProf: 0, totalRepasseClinic: 0, count: 0 });
-  }, [exams, filterPet]);
+  }, [filteredExamsForList]);
 
   const machineStats = useMemo(() => {
     const stats = {
@@ -1203,7 +1220,7 @@ export const OperationalDashboard = () => {
                 <List className="w-5 h-5 text-petcare-DEFAULT" />
                 Exames Registrados
               </h2>
-              <div className="flex gap-2 w-full md:w-auto">
+              <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto md:items-center">
                 <div className="relative flex-1 md:w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
@@ -1213,6 +1230,19 @@ export const OperationalDashboard = () => {
                     onChange={e => setFilterPet(e.target.value)}
                     className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-petcare-light/50 outline-none"
                   />
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Calendar className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden />
+                  <label htmlFor="exam-list-date-order" className="sr-only">Ordenar exames por data</label>
+                  <select
+                    id="exam-list-date-order"
+                    value={examListDateOrder}
+                    onChange={e => setExamListDateOrder(e.target.value as 'desc' | 'asc')}
+                    className="w-full sm:w-auto min-w-[200px] pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-petcare-light/50 outline-none cursor-pointer"
+                  >
+                    <option value="desc">Data: mais recentes primeiro</option>
+                    <option value="asc">Data: mais antigos primeiro</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -1231,15 +1261,14 @@ export const OperationalDashboard = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-sm text-gray-700">
-                  {exams.length === 0 ? (
+                  {filteredExamsForList.length === 0 ? (
                     <tr>
                       <td colSpan={canViewFinancials ? 7 : 6} className="p-8 text-center text-gray-400">
-                        Nenhum exame encontrado.
+                        {exams.length === 0 ? 'Nenhum exame encontrado.' : 'Nenhum exame corresponde à busca.'}
                       </td>
                     </tr>
                   ) : (
-                    exams
-                      .filter(e => e.petName.toLowerCase().includes(filterPet.toLowerCase()))
+                    filteredExamsForList
                       .map(exam => {
                         const isMyExam = loggedUserEntity?.type === 'vet' && loggedUserEntity.id === exam.veterinarianId;
                         const canEditThisReport = canEditReports && (isMyExam || user?.level === 1);
