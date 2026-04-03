@@ -47,7 +47,19 @@ export const OperationalDashboard = () => {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   const [reportEditorState, setReportEditorState] = useState<{ isOpen: boolean; exam: Exam | null; studyId?: string; }>({ isOpen: false, exam: null });
-  const [confirmationState, setConfirmationState] = useState<{ isOpen: boolean; type: 'exam' | 'price' | 'report' | null; id: string | null; title: string; message: string; requirePassword?: boolean; errorMessage?: string; }>({ isOpen: false, type: null, id: null, title: '', message: '', requirePassword: false, errorMessage: '' });
+  
+  const [confirmationState, setConfirmationState] = useState<{ 
+    isOpen: boolean; 
+    type: 'exam' | 'price' | 'report' | 'copy_prices' | null; 
+    id: string | null; 
+    title: string; 
+    message: string; 
+    requirePassword?: boolean; 
+    errorMessage?: string;
+    variant?: 'danger' | 'warning';
+    payload?: any;
+  }>({ isOpen: false, type: null, id: null, title: '', message: '', requirePassword: false, errorMessage: '', variant: 'danger' });
+  
   const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
   const [editingPrice, setEditingPrice] = useState<PriceRule | null>(null);
   
@@ -413,7 +425,6 @@ export const OperationalDashboard = () => {
         }
       }
 
-      // OTIMIZAÇÃO: Executa a busca de exames e de preços em PARALELO
       const [examsResult, ...priceResults] = await Promise.all([
         query,
         ...pricePromises
@@ -492,6 +503,9 @@ export const OperationalDashboard = () => {
   const canCreateExam = (user?.level === 1 || user?.role === 'clinic' || user?.role === 'vet' || user?.permissions?.criar_exame) && !isPartnerView;
   const canEditExamDetails = user?.level === 1 || user?.role === 'clinic' || user?.role === 'vet' || user?.permissions?.criar_exame || user?.permissions?.editar_resultados;
   const canEditReports = user?.level === 1 || user?.role === 'vet' || user?.permissions?.edit_reports;
+  
+  const hasReportSubPermissions = user?.permissions?.gerar_pdf_exame !== undefined;
+  const canPrintExam = user?.level === 1 || (hasReportSubPermissions ? user?.permissions?.gerar_pdf_exame : (user?.role === 'vet' || user?.role === 'clinic' || user?.permissions?.export_reports || user?.permissions?.edit_reports));
 
   const getBrandingForExam = (exam: Exam): BrandingInfo => {
     return { 
@@ -786,7 +800,8 @@ export const OperationalDashboard = () => {
       id,
       title: 'Excluir Exame',
       message: 'Tem certeza? Esta ação não pode ser desfeita.',
-      requirePassword: !isOwnerOrAdmin && !hasBypassPermission
+      requirePassword: !isOwnerOrAdmin && !hasBypassPermission,
+      variant: 'danger'
     });
   };
 
@@ -862,6 +877,62 @@ export const OperationalDashboard = () => {
     } catch (error) {
       console.error("Erro ao excluir preço:", error);
       alert("Erro ao excluir preço.");
+    }
+  };
+
+  const executeCopyPrices = async (payload: any) => {
+    const { sourceRules, donorType, targetType, targetId, sourceName, targetName } = payload;
+    try {
+      const rulesToInsert = sourceRules.map((rule: any) => {
+        let newClinicId = rule.clinic_id;
+        let newVetId = rule.veterinarian_id;
+
+        if (donorType === 'clinic' && targetType === 'clinic') {
+          newClinicId = targetId;
+        } else if (donorType === 'vet' && targetType === 'vet') {
+          newVetId = targetId;
+        } else if (donorType === 'clinic' && targetType === 'vet') {
+          newClinicId = 'default';
+          newVetId = targetId;
+        } else if (donorType === 'vet' && targetType === 'clinic') {
+          newVetId = null;
+          newClinicId = targetId;
+        }
+
+        return {
+          owner_id: user?.ownerId || user?.id,
+          clinic_id: newClinicId || 'default',
+          veterinarian_id: newVetId,
+          modality: rule.modality,
+          period: rule.period,
+          label: rule.label,
+          period_label: rule.period_label,
+          valor: rule.valor,
+          repasse_professional: rule.repasse_professional,
+          repasse_clinic: rule.repasse_clinic,
+          taxa_extra: rule.taxa_extra || 0,
+          taxa_extra_professional: rule.taxa_extra_professional || 0,
+          taxa_extra_clinic: rule.taxa_extra_clinic || 0,
+          observacoes: rule.observacoes || ''
+        };
+      });
+
+      const { error } = await supabase
+        .from('price_rules')
+        .insert(rulesToInsert);
+
+      if (error) throw error;
+
+      alert(`✅ ${rulesToInsert.length} regra(s) de preço copiada(s) de "${sourceName}" para "${targetName}" com sucesso!`);
+      setCopyFromScope('');
+      setCopyToScope('');
+      await fetchData();
+      setIsPriceModalOpen(false);
+      setConfirmationState(prev => ({ ...prev, isOpen: false }));
+    } catch (error: any) {
+      console.error("Erro ao copiar preços:", error);
+      alert(`Erro ao copiar preços: ${error.message || 'Erro desconhecido'}`);
+      setConfirmationState(prev => ({ ...prev, isOpen: false }));
     }
   };
 
@@ -1022,7 +1093,6 @@ export const OperationalDashboard = () => {
     setCopyFromScope(''); 
   };
 
-  // REMOVIDO o filtro que escondia o próprio usuário da lista
   const copyAvailableVets = availableVeterinarians;
 
   const duplicateRule = useMemo(() => {
@@ -1246,13 +1316,15 @@ export const OperationalDashboard = () => {
                                 </button>
                               )}
 
-                              <button 
-                                onClick={() => handlePrintReport(exam)}
-                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" 
-                                title="Imprimir / Visualizar PDF"
-                              >
-                                <Printer className="w-4 h-4" />
-                              </button>
+                              {canPrintExam && (
+                                <button 
+                                  onClick={() => handlePrintReport(exam)}
+                                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" 
+                                  title="Imprimir / Visualizar PDF"
+                                >
+                                  <Printer className="w-4 h-4" />
+                                </button>
+                              )}
 
                               {user?.permissions.delete_exams && (
                                 <button 
@@ -1809,7 +1881,7 @@ export const OperationalDashboard = () => {
                                 <button onClick={() => handleOpenPriceModal(rule)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded"><Edit2 className="w-4 h-4" /></button>
                               )}
                               {canDeletePriceRule && (
-                                <button onClick={() => { setConfirmationState({ isOpen: true, type: 'price', id: rule.id, title: 'Excluir Preço', message: 'Tem certeza?' }); }} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 className="w-4 h-4" /></button>
+                                <button onClick={() => { setConfirmationState({ isOpen: true, type: 'price', id: rule.id, title: 'Excluir Preço', message: 'Tem certeza?', variant: 'danger' }); }} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 className="w-4 h-4" /></button>
                               )}
                             </td>
                           )}
@@ -1987,62 +2059,22 @@ export const OperationalDashboard = () => {
                           .eq(targetType === 'clinic' ? 'clinic_id' : 'veterinarian_id', targetId);
 
                         if (existingRules && existingRules.length > 0) {
-                          const confirm = window.confirm(
-                            `O parceiro "${targetName}" já possui ${existingRules.length} regra(s) de preço. ` +
-                            `Copiar as regras de "${sourceName}" ` +
-                            `vai adicionar ${sourceRules.length} nova(s) regra(s). Deseja continuar?`
-                          );
-                          if (!confirm) return;
+                          setConfirmationState({
+                            isOpen: true,
+                            type: 'copy_prices',
+                            id: null,
+                            title: 'Atenção: Regras Existentes',
+                            message: `O parceiro "${targetName}" já possui ${existingRules.length} regra(s) de preço.\n\nCopiar as regras de "${sourceName}" vai adicionar ${sourceRules.length} nova(s) regra(s).\n\nDeseja continuar?`,
+                            variant: 'warning',
+                            payload: { sourceRules, donorType, targetType, targetId, sourceName, targetName }
+                          });
+                          return; 
                         }
 
-                        const rulesToInsert = sourceRules.map(rule => {
-                          let newClinicId = rule.clinic_id;
-                          let newVetId = rule.veterinarian_id;
-
-                          if (donorType === 'clinic' && targetType === 'clinic') {
-                            newClinicId = targetId;
-                          } else if (donorType === 'vet' && targetType === 'vet') {
-                            newVetId = targetId;
-                          } else if (donorType === 'clinic' && targetType === 'vet') {
-                            newClinicId = 'default';
-                            newVetId = targetId;
-                          } else if (donorType === 'vet' && targetType === 'clinic') {
-                            newVetId = null;
-                            newClinicId = targetId;
-                          }
-
-                          return {
-                            owner_id: user?.ownerId || user?.id,
-                            clinic_id: newClinicId || 'default',
-                            veterinarian_id: newVetId,
-                            modality: rule.modality,
-                            period: rule.period,
-                            label: rule.label,
-                            period_label: rule.period_label,
-                            valor: rule.valor,
-                            repasse_professional: rule.repasse_professional,
-                            repasse_clinic: rule.repasse_clinic,
-                            taxa_extra: rule.taxa_extra || 0,
-                            taxa_extra_professional: rule.taxa_extra_professional || 0,
-                            taxa_extra_clinic: rule.taxa_extra_clinic || 0,
-                            observacoes: rule.observacoes || ''
-                          };
-                        });
-
-                        const { error } = await supabase
-                          .from('price_rules')
-                          .insert(rulesToInsert);
-
-                        if (error) throw error;
-
-                        alert(`✅ ${rulesToInsert.length} regra(s) de preço copiada(s) de "${sourceName}" para "${targetName}" com sucesso!`);
-                        setCopyFromScope('');
-                        setCopyToScope('');
-                        await fetchData();
-                        setIsPriceModalOpen(false);
+                        await executeCopyPrices({ sourceRules, donorType, targetType, targetId, sourceName: sourceName || '', targetName: targetName || '' });
                       } catch (error: any) {
-                        console.error("Erro ao copiar preços:", error);
-                        alert(`Erro ao copiar preços: ${error.message || 'Erro desconhecido'}`);
+                        console.error("Erro ao preparar cópia:", error);
+                        alert(`Erro ao preparar cópia: ${error.message || 'Erro desconhecido'}`);
                       }
                     }}
                     className="w-full bg-teal-600 text-white px-4 py-3 rounded-lg text-sm font-bold hover:bg-teal-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
@@ -2200,10 +2232,11 @@ export const OperationalDashboard = () => {
         onConfirm={() => {
           if (confirmationState.type === 'exam' && confirmationState.id) handleDeleteExam(confirmationState.id);
           if (confirmationState.type === 'price' && confirmationState.id) handleDeletePrice(confirmationState.id);
+          if (confirmationState.type === 'copy_prices' && confirmationState.payload) executeCopyPrices(confirmationState.payload);
         }}
         title={confirmationState.title}
         message={confirmationState.message}
-        variant="danger"
+        variant={confirmationState.variant || "danger"}
         requirePassword={confirmationState.requirePassword}
       />
     </div>
