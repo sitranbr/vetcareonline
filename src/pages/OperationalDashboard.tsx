@@ -441,8 +441,6 @@ export const OperationalDashboard = () => {
 
     const uniquePrices = new Map();
     pricesData.forEach(p => {
-      // Filtro de segurança: Garante que a regra pertence ao dono do contexto atual
-      // Isso evita que clínicas independentes vejam regras genéricas de outros assinantes (vazamento por RLS)
       if (!p.owner_id || p.owner_id === targetUserId) {
         uniquePrices.set(p.id, p);
       }
@@ -565,7 +563,6 @@ export const OperationalDashboard = () => {
         }
       });
     } else if (priceRules.length === 0) {
-      // Se não houver NENHUMA regra no sistema inteiro, mostra a lista padrão para não travar o usuário
       const baseModalities = [
         { value: 'USG', label: 'Ultrassom', isCustom: false },
         { value: 'RX', label: 'Raio-X', isCustom: false },
@@ -644,7 +641,7 @@ export const OperationalDashboard = () => {
         
         return {
           date: formData.date,
-          pet_name: formData.petName, // CORREÇÃO: Usar snake_case 'pet_name' para o banco de dados
+          pet_name: formData.petName,
           species: formData.species === 'Outros' ? formData.customSpecies : formData.species,
           requester_vet: formData.requesterVet,
           requester_crmv: formData.requesterCrmv,
@@ -792,7 +789,6 @@ export const OperationalDashboard = () => {
       const isCustom = priceForm.modality === 'OUTROS';
       const finalLabel = isCustom ? customModalityName : getModalityLabel(priceForm.modality || '');
 
-      // Segurança reforçada: Garante que clinic_id seja uma string válida (nunca null)
       const safeClinicId = priceForm.clinicId?.trim() ? priceForm.clinicId.trim() : 'default';
       const safeVetId = priceForm.veterinarianId?.trim() ? priceForm.veterinarianId.trim() : null;
 
@@ -992,7 +988,6 @@ export const OperationalDashboard = () => {
 
   const copyAvailableVets = availableVeterinarians.filter(v => v.profileId !== (user?.ownerId || user?.id));
 
-  // Validação para evitar duplicidade de regras
   const duplicateRule = useMemo(() => {
     const normalizeId = (id?: string | null) => (!id || id === 'default') ? '' : id;
     
@@ -1139,6 +1134,10 @@ export const OperationalDashboard = () => {
                     exams
                       .filter(e => e.petName.toLowerCase().includes(filterPet.toLowerCase()))
                       .map(exam => {
+                        // Verifica se o usuário atual é o veterinário deste exame ou um Admin
+                        const isMyExam = loggedUserEntity?.type === 'vet' && loggedUserEntity.id === exam.veterinarianId;
+                        const canEditThisReport = canEditReports && (isMyExam || user?.level === 1);
+
                         return (
                         <tr key={exam.id} className="hover:bg-gray-50/50 transition-colors group">
                           <td className="p-4 whitespace-nowrap text-gray-500">
@@ -1196,7 +1195,7 @@ export const OperationalDashboard = () => {
                                 </button>
                               )}
 
-                              {canEditReports && (
+                              {canEditThisReport && (
                                 <button 
                                   onClick={() => handleEditReport(exam)}
                                   className={clsx(

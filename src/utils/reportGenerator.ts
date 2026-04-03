@@ -147,7 +147,7 @@ const renderHtmlToPdf = (doc: jsPDF, html: string, startX: number, startY: numbe
 // Relatório Financeiro
 export const generatePDFReport = async (exams: Exam[], user: User, startDate: string, endDate: string, branding: BrandingInfo) => {
   const doc = new jsPDF();
-  const canViewFinancials = user.level === 1 || user.level === 2;
+  const canViewFinancials = user.level === 1 || user.level === 2 || user.permissions?.view_financials;
   await addHeader(doc, 'Relatório de Exames', branding);
   const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
   
@@ -180,38 +180,44 @@ export const generatePDFReport = async (exams: Exam[], user: User, startDate: st
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
   doc.text('Resumo Financeiro', 18, startY + 8);
+  
+  // Ajuste de tabulação (mais próximo)
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
   doc.text('Qtd. Exames:', 18, startY + 18);
   doc.setFont('helvetica', 'bold');
-  doc.text(totalExams.toString(), 45, startY + 18);
+  doc.text(totalExams.toString(), 44, startY + 18);
+  
   doc.setFont('helvetica', 'normal');
-  doc.text('Valor Total:', 70, startY + 18);
+  doc.text('Valor Total:', 60, startY + 18);
   doc.setFont('helvetica', 'bold');
-  doc.text(formatMoney(totalValue), 95, startY + 18);
+  doc.text(formatMoney(totalValue), 80, startY + 18);
 
   if (canViewFinancials) {
     doc.setFont('helvetica', 'normal');
-    doc.text('ISS (5%):', 130, startY + 18);
+    doc.text('ISS (5%):', 110, startY + 18);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
-    doc.text(formatMoney(totalISS), 155, startY + 18);
+    doc.text(formatMoney(totalISS), 128, startY + 18);
+    
     const row2Y = startY + 28;
     doc.setFont('helvetica', 'normal');
     doc.text('R. Profissional:', 18, row2Y);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
-    doc.text(formatMoney(totalRepasseAndre), 45, row2Y);
+    doc.text(formatMoney(totalRepasseAndre), 44, row2Y);
+    
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
-    doc.text('R. Clínica:', 70, row2Y);
+    doc.text('R. Clínica:', 60, row2Y);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
-    doc.text(formatMoney(totalRepasseUnivet), 95, row2Y);
+    doc.text(formatMoney(totalRepasseUnivet), 80, row2Y);
   }
 
-  const tableHeaders = ['Data', 'PET', 'Modalidade', 'Período', 'Máquina', 'Valor'];
+  // Adicionada a coluna "Solicitante"
+  const tableHeaders = ['Data', 'PET', 'Solicitante', 'Modalidade', 'Período', 'Máquina', 'Valor'];
   if (canViewFinancials) tableHeaders.push('R. Prof', 'R. Clínica');
 
   const tableBody = exams.map(exam => {
@@ -222,6 +228,7 @@ export const generatePDFReport = async (exams: Exam[], user: User, startDate: st
     const row = [
       format(parseISO(exam.date), 'dd/MM/yyyy'),
       exam.petName,
+      exam.requesterVet || '-', // Adicionado o solicitante aqui
       modalityText,
       getPeriodLabel(exam.period),
       exam.machineOwner === 'professional' ? 'Profissional' : 'Clínica',
@@ -244,15 +251,16 @@ export const generatePDFReport = async (exams: Exam[], user: User, startDate: st
     bodyStyles: { fontSize: 8, textColor: COLORS.text },
     columnStyles: { 
       0: { halign: 'center' }, 
-      3: { halign: 'center' },
-      5: { halign: 'right', fontStyle: 'bold' }, 
-      6: { halign: 'right', textColor: COLORS.primary }, 
-      7: { halign: 'right', textColor: COLORS.dark } 
+      4: { halign: 'center' }, // Período agora é o índice 4
+      6: { halign: 'right', fontStyle: 'bold' }, // Valor agora é o índice 6
+      7: { halign: 'right', textColor: COLORS.primary }, // R. Prof
+      8: { halign: 'right', textColor: COLORS.dark } // R. Clínica
     },
     alternateRowStyles: { fillColor: [249, 250, 251] },
+    // Adicionado um espaço vazio extra para alinhar os totais com as novas colunas
     foot: canViewFinancials 
-      ? [[ 'TOTAIS', '', '', '', '', formatMoney(totalValue), formatMoney(totalRepasseAndre), formatMoney(totalRepasseUnivet) ]] 
-      : [[ 'TOTAL', '', '', '', '', formatMoney(totalValue) ]],
+      ? [[ 'TOTAIS', '', '', '', '', '', formatMoney(totalValue), formatMoney(totalRepasseAndre), formatMoney(totalRepasseUnivet) ]] 
+      : [[ 'TOTAL', '', '', '', '', '', formatMoney(totalValue) ]],
     footStyles: { fillColor: [COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]], textColor: 255, fontStyle: 'bold', halign: 'right' }
   });
 
