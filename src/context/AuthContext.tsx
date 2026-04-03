@@ -87,34 +87,36 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (currentUser.role === 'clinic' || currentUser.role === 'vet') {
          const tableName = currentUser.role === 'clinic' ? 'clinics' : 'veterinarians';
-         const { data: byProfile } = await supabase.from(tableName).select('id, name').eq('profile_id', currentUser.id).maybeSingle();
+         // Usando .limit(1) para evitar falhas caso existam registros duplicados
+         const { data: byProfile } = await supabase.from(tableName).select('id, name').eq('profile_id', currentUser.id).limit(1);
 
-         if (byProfile) {
-           myEntityId = byProfile.id;
-           myEntityName = byProfile.name;
+         if (byProfile && byProfile.length > 0) {
+           myEntityId = byProfile[0].id;
+           myEntityName = byProfile[0].name;
          } else {
            const email = currentUser.email.trim().toLowerCase();
-           const { data: byEmail } = await supabase.from(tableName).select('id, name').eq('email', email).maybeSingle();
-           if (byEmail) {
-             myEntityId = byEmail.id;
-             myEntityName = byEmail.name;
-             await supabase.from(tableName).update({ profile_id: currentUser.id }).eq('id', byEmail.id);
+           const { data: byEmail } = await supabase.from(tableName).select('id, name').eq('email', email).limit(1);
+           if (byEmail && byEmail.length > 0) {
+             myEntityId = byEmail[0].id;
+             myEntityName = byEmail[0].name;
+             // Vincula o profile_id para garantir que as configurações futuras funcionem
+             await supabase.from(tableName).update({ profile_id: currentUser.id }).eq('id', byEmail[0].id);
            }
          }
       } else if ((currentUser.role === 'reception' || currentUser.level === 5) && currentUser.ownerId) {
         const ownerProfileId = currentUser.ownerId;
         
-        const { data: vetByOwner } = await supabase.from('veterinarians').select('id, name').eq('profile_id', ownerProfileId).maybeSingle();
+        const { data: vetByOwner } = await supabase.from('veterinarians').select('id, name').eq('profile_id', ownerProfileId).limit(1);
         
-        if (vetByOwner) {
-          myEntityId = vetByOwner.id;
-          myEntityName = vetByOwner.name;
+        if (vetByOwner && vetByOwner.length > 0) {
+          myEntityId = vetByOwner[0].id;
+          myEntityName = vetByOwner[0].name;
           myType = 'vet';
         } else {
-          const { data: clinicByOwner } = await supabase.from('clinics').select('id, name').eq('profile_id', ownerProfileId).maybeSingle();
-          if (clinicByOwner) {
-            myEntityId = clinicByOwner.id;
-            myEntityName = clinicByOwner.name;
+          const { data: clinicByOwner } = await supabase.from('clinics').select('id, name').eq('profile_id', ownerProfileId).limit(1);
+          if (clinicByOwner && clinicByOwner.length > 0) {
+            myEntityId = clinicByOwner[0].id;
+            myEntityName = clinicByOwner[0].name;
             myType = 'clinic';
           }
         }
@@ -304,9 +306,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       await supabase.from('profiles').insert(profileData);
       if (newUser.role === 'clinic' || newUser.role === 'vet') {
         const tableName = newUser.role === 'clinic' ? 'clinics' : 'veterinarians';
-        const { data: existing } = await supabase.from(tableName).select('id').eq('email', newUser.email).maybeSingle();
-        if (existing) { await supabase.from(tableName).update({ profile_id: data.user.id }).eq('id', existing.id); } 
-        else { await supabase.from(tableName).insert({ name: newUser.name, email: newUser.email, profile_id: data.user.id }); }
+        // Usando .limit(1) para evitar falhas
+        const { data: existing } = await supabase.from(tableName).select('id').eq('email', newUser.email).limit(1);
+        if (existing && existing.length > 0) { 
+          await supabase.from(tableName).update({ profile_id: data.user.id }).eq('id', existing[0].id); 
+        } 
+        else { 
+          await supabase.from(tableName).insert({ name: newUser.name, email: newUser.email, profile_id: data.user.id }); 
+        }
       }
     }
     await refreshUsers();

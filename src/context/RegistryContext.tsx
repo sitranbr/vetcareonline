@@ -12,8 +12,8 @@ interface RegistryContextType {
   updateClinic: (id: string, data: Partial<Clinic>) => Promise<void>;
   deleteClinic: (id: string) => Promise<void>;
   linkPartnerByEmail: (email: string, myId: string, myType: 'vet' | 'clinic') => Promise<{ success: boolean; message?: string; name?: string }>;
-  findPartnerByEmail: (email: string) => Promise<{ found: boolean; name?: string; role?: string; id?: string }>; // Nova função
-  unlinkPartner: (partnerId: string, myId: string) => Promise<{ success: boolean; message?: string }>; // Nova função para desvincular
+  findPartnerByEmail: (email: string) => Promise<{ found: boolean; name?: string; role?: string; id?: string }>;
+  unlinkPartner: (partnerId: string, myId: string) => Promise<{ success: boolean; message?: string }>;
   resetRegistry: () => void;
   refreshRegistry: () => Promise<void>;
 }
@@ -193,41 +193,39 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Nova função para pesquisar parceiro antes de adicionar
   const findPartnerByEmail = async (email: string) => {
     try {
       const cleanEmail = email.trim().toLowerCase();
       
-      // Tenta buscar na tabela de perfis (se RLS permitir ou se for público)
+      // Usando .limit(1) para evitar falhas de múltiplos registros
       const { data: profile } = await supabase
         .from('profiles')
         .select('id, name, role')
         .eq('email', cleanEmail)
-        .maybeSingle();
+        .limit(1);
 
-      if (profile) {
-        return { found: true, name: profile.name, role: profile.role, id: profile.id };
+      if (profile && profile.length > 0) {
+        return { found: true, name: profile[0].name, role: profile[0].role, id: profile[0].id };
       }
 
-      // Se não achar em profiles (talvez ainda não tenha login, mas tenha cadastro em vets/clinics)
       const { data: vet } = await supabase
         .from('veterinarians')
         .select('id, name')
         .eq('email', cleanEmail)
-        .maybeSingle();
+        .limit(1);
       
-      if (vet) {
-        return { found: true, name: vet.name, role: 'vet' };
+      if (vet && vet.length > 0) {
+        return { found: true, name: vet[0].name, role: 'vet' };
       }
 
       const { data: clinic } = await supabase
         .from('clinics')
         .select('id, name')
         .eq('email', cleanEmail)
-        .maybeSingle();
+        .limit(1);
 
-      if (clinic) {
-        return { found: true, name: clinic.name, role: 'clinic' };
+      if (clinic && clinic.length > 0) {
+        return { found: true, name: clinic[0].name, role: 'clinic' };
       }
 
       return { found: false };
@@ -247,7 +245,6 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
 
   const unlinkPartner = async (partnerId: string, myId: string) => {
     try {
-      // Busca o perfil atual para pegar o array de parceiros
       const { data: myProfile, error: profileError } = await supabase
         .from('profiles')
         .select('partners')
@@ -264,11 +261,8 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const currentPartners = myProfile.partners || [];
-      
-      // Remove o parceiro do array
       const updatedPartners = currentPartners.filter((id: string) => id !== partnerId);
 
-      // Atualiza o perfil
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ partners: updatedPartners })
@@ -279,7 +273,6 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
         return { success: false, message: "Erro ao desvincular parceiro." };
       }
 
-      // Também remove o vínculo reverso (remove o meu ID do array de parceiros do outro)
       const { data: partnerProfile } = await supabase
         .from('profiles')
         .select('partners')

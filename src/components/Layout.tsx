@@ -99,7 +99,7 @@ export const Layout = () => {
                     to="/users" 
                     className={clsx(
                       "px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center",
-                      location.pathname === '/users' 
+                      location.pathname === '/users' || location.pathname.startsWith('/users/')
                         ? "bg-petcare-bg text-petcare-dark" 
                         : "text-gray-500 hover:text-petcare-DEFAULT hover:bg-gray-50"
                     )}
@@ -171,7 +171,7 @@ export const Layout = () => {
               to="/users" 
               className={clsx(
                 "p-2 rounded-lg flex flex-col items-center",
-                location.pathname === '/users' ? "text-petcare-dark bg-petcare-bg" : "text-gray-400"
+                location.pathname === '/users' || location.pathname.startsWith('/users/') ? "text-petcare-dark bg-petcare-bg" : "text-gray-400"
               )}
             >
               <Users className="w-5 h-5" />

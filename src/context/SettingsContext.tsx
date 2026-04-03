@@ -59,12 +59,12 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
               .from('profiles')
               .select('role')
               .eq('id', user.ownerId)
-              .maybeSingle();
+              .limit(1);
             
-            if (ownerProfile) {
+            if (ownerProfile && ownerProfile.length > 0) {
               targetUserId = user.ownerId;
               // Usa a tabela correspondente ao role do criador
-              targetTable = ownerProfile.role === 'vet' ? 'veterinarians' : 'clinics';
+              targetTable = ownerProfile[0].role === 'vet' ? 'veterinarians' : 'clinics';
             } else {
               console.warn('⚠️ Perfil do criador não encontrado, usando configurações padrão');
               if (isMounted) setSettings(DEFAULT_SETTINGS);
@@ -73,32 +73,34 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
           }
           
           // CORREÇÃO CRÍTICA: Monta a query de select dinamicamente para evitar erro de coluna inexistente
-          // A tabela 'clinics' não tem a coluna 'crmv', ela usa 'document'.
+          // Adicionado 'document' para veterinarians também, caso a RPC salve nele
           const selectQuery = targetTable === 'veterinarians' 
-            ? 'name, crmv, phone, email, address, logo_url' 
+            ? 'name, crmv, document, phone, email, address, logo_url' 
             : 'name, document, phone, email, address, logo_url';
 
           // Busca dados vinculados ao perfil correto
+          // Usando .limit(1) em vez de .maybeSingle() para evitar falhas silenciosas se houver registros duplicados
           const { data, error } = await supabase
             .from(targetTable)
             .select(selectQuery)
             .eq('profile_id', targetUserId)
-            .maybeSingle();
+            .limit(1);
 
           if (error) {
             console.error(`Erro ao buscar dados na tabela ${targetTable}:`, error);
           }
 
-          if (isMounted && data) {
+          if (isMounted && data && data.length > 0) {
+            const record = data[0];
             setSettings(prev => ({
               ...prev,
-              name: data.name || prev.name,
+              name: record.name || prev.name,
               // Mapeia corretamente o documento dependendo da tabela usada
-              document: (targetTable === 'veterinarians' ? data.crmv : data.document) || prev.document,
-              phone: data.phone || prev.phone,
-              email: data.email || prev.email,
-              address: data.address || prev.address,
-              logoUrl: data.logo_url || ''
+              document: (targetTable === 'veterinarians' ? (record.document || record.crmv) : record.document) || prev.document,
+              phone: record.phone || prev.phone,
+              email: record.email || prev.email,
+              address: record.address || prev.address,
+              logoUrl: record.logo_url || ''
             }));
           } else if (isMounted) {
              // Se o usuário existe mas não tem dados na tabela específica ainda, mantém padrão

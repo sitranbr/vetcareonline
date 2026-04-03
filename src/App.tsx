@@ -6,6 +6,7 @@ import { RegistryProvider } from './context/RegistryContext';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { AdminUsers } from './pages/AdminUsers';
+import { AdminUserForm } from './pages/AdminUserForm';
 import { AdminSettings } from './pages/AdminSettings';
 import { Layout } from './components/Layout';
 import { Loader2, LogOut, RefreshCw } from 'lucide-react';
@@ -100,6 +101,8 @@ function App() {
                 </ProtectedRoute>
               }>
                 <Route index element={<Dashboard />} />
+                <Route path="users/new" element={<AdminUserForm />} />
+                <Route path="users/:userId/edit" element={<AdminUserForm />} />
                 <Route path="users" element={<AdminUsers />} />
                 <Route path="settings" element={<AdminSettings />} />
               </Route>
