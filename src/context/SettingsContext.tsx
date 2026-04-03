@@ -9,7 +9,6 @@ interface SettingsContextType {
   resetSettings: () => void;
 }
 
-// REBRANDING: Alterado de PIQUET para Petcare
 const DEFAULT_SETTINGS: ClinicSettings = {
   systemName: 'Petcare Sistema Veterinário',
   name: 'Petcare',
@@ -34,7 +33,6 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   // Carrega configurações do Banco de Dados baseadas no usuário logado
-  // Se o usuário for um convidado (tem ownerId), usa as configurações do criador
   useEffect(() => {
     let isMounted = true;
 
@@ -48,14 +46,15 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
       // Clínicas, Veterinários E Recepção têm personalização (White Label)
       if (user.role === 'vet' || user.role === 'clinic' || user.role === 'reception' || user.level === 5) {
         try {
-          // Se o usuário é um convidado ou equipe interna (tem ownerId), busca as configurações do criador
-          const isGuest = user.ownerId && user.ownerId !== user.id;
+          // APENAS a Recepção (Equipe Interna) deve herdar as configurações do criador (ownerId)
+          // Clínicas e Vets parceiros devem carregar seus próprios dados, mesmo sendo convidados
           const isReception = user.role === 'reception' || user.level === 5;
+          
           let targetUserId = user.id;
           let targetTable = user.role === 'vet' ? 'veterinarians' : 'clinics';
           
-          if (isGuest || isReception) {
-            // Para convidados/recepção, precisa buscar o role do criador para saber qual tabela usar
+          if (isReception && user.ownerId) {
+            // Para recepção, precisa buscar o role do criador para saber qual tabela usar
             const { data: ownerProfile } = await supabase
               .from('profiles')
               .select('role')
@@ -67,11 +66,9 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
               // Usa a tabela correspondente ao role do criador
               targetTable = ownerProfile.role === 'vet' ? 'veterinarians' : 'clinics';
               
-              console.log('🎨 Usuário dependente detectado. Buscando configurações do criador:', {
+              console.log('🎨 Equipe interna detectada. Buscando configurações do assinante principal:', {
                 userId: user.id,
-                userRole: user.role,
                 ownerId: user.ownerId,
-                ownerRole: ownerProfile.role,
                 targetTable
               });
             } else {
@@ -81,7 +78,7 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
             }
           }
           
-          // Busca dados vinculados ao perfil do criador (ou do próprio usuário se não for dependente)
+          // Busca dados vinculados ao perfil correto (do próprio usuário ou do chefe, se for recepção)
           const { data } = await supabase
             .from(targetTable)
             .select('name, document, phone, email, address, logo_url, crmv')
@@ -99,14 +96,6 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
               address: data.address || prev.address,
               logoUrl: data.logo_url || ''
             }));
-            
-            if (isGuest || isReception) {
-              console.log('✅ Configurações do criador aplicadas ao dependente:', {
-                name: data.name,
-                logoUrl: data.logo_url,
-                document: targetTable === 'veterinarians' ? data.crmv : data.document
-              });
-            }
           } else if (isMounted) {
              // Se o usuário existe mas não tem dados na tabela específica ainda, mantém padrão
              console.warn('⚠️ Dados não encontrados na tabela', targetTable, 'para profile_id', targetUserId);
