@@ -1,18 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { User, UserRole, UserPermissions } from '../types';
 import { Modal } from '../components/Modal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { supabase } from '../lib/supabase';
 import { 
-  Building2, Stethoscope, Plus, Trash2, Search, Shield, Mail, Lock, Edit2, AlertCircle, CheckCircle, XCircle, Link as LinkIcon, UserCheck,
-  DollarSign, Tag, FileText, Users, Settings, CheckSquare, Ban, Eraser, AlertTriangle, Loader2
+  Building2, Stethoscope, Plus, Trash2, Search, Shield, Mail, Lock, Edit2, CheckCircle, XCircle, Link as LinkIcon, UserCheck,
+  DollarSign, Tag, FileText, Users, Settings, CheckSquare, Eraser, AlertTriangle, Loader2
 } from 'lucide-react';
 
 export const AdminTenants = () => {
-  const { users, user: currentUser, register, updateUser, updateAccount, deleteUser, getDefaultPermissions, refreshUsers } = useAuth();
+  const { users, user: currentUser, updateUser, updateAccount, deleteUser, getDefaultPermissions, refreshUsers } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -115,35 +115,23 @@ export const AdminTenants = () => {
 
   const handleTypeChange = (newType: 'clinic' | 'vet') => {
     setFormData(prev => ({ ...prev, type: newType }));
-    if (!editingUser) {
-      const level = newType === 'clinic' ? 4 : 3;
-      setPermissions(getDefaultPermissions(level));
-    }
   };
 
-  const handleOpenModal = (userToEdit?: User) => {
+  const handleOpenEditModal = (userToEdit: User) => {
     setFormError(null);
     setFormSuccess(null);
-    
-    if (userToEdit) {
-      if (userToEdit.id !== currentUser?.id && !isRootSubscriberAccount(userToEdit)) {
-        alert('Este perfil está vinculado a um assinante (conta filha). Alterações são feitas pelo próprio assinante na gestão de equipe.');
-        return;
-      }
-      setEditingUser(userToEdit);
-      setFormData({
-        name: userToEdit.name,
-        email: userToEdit.email,
-        password: '', 
-        type: userToEdit.role === 'vet' ? 'vet' : 'clinic'
-      });
-      setPermissions(userToEdit.permissions || getDefaultPermissions(userToEdit.level));
-    } else {
-      setEditingUser(null);
-      setFormData({ name: '', email: '', password: '', type: 'clinic' });
-      setPermissions(getDefaultPermissions(4));
+    if (userToEdit.id !== currentUser?.id && !isRootSubscriberAccount(userToEdit)) {
+      alert('Este perfil está vinculado a um assinante (conta filha). Alterações são feitas pelo próprio assinante na gestão de equipe.');
+      return;
     }
-    setIsModalOpen(true);
+    setEditingUser(userToEdit);
+    setFormData({
+      name: userToEdit.name,
+      email: userToEdit.email,
+      password: '',
+      type: userToEdit.role === 'vet' ? 'vet' : 'clinic'
+    });
+    setPermissions(userToEdit.permissions || getDefaultPermissions(userToEdit.level));
   };
 
   const togglePermission = (key: keyof UserPermissions) => {
@@ -169,46 +157,35 @@ export const AdminTenants = () => {
       password: formData.password
     };
 
+    if (!editingUser) return;
+
     try {
-      if (editingUser) {
-        if (editingUser.id !== currentUser?.id && !isRootSubscriberAccount(editingUser)) {
-          throw new Error('Não é permitido alterar perfis vinculados a outro assinante por aqui.');
-        }
-        if (editingUser.id === currentUser?.id) {
-          const result = await updateAccount({
-            name: cleanData.name,
-            email: cleanData.email,
-            password: cleanData.password || undefined 
-          });
-          if (result.error) throw new Error(result.error);
-        } else {
-          await updateUser(editingUser.id, {
-            name: cleanData.name,
-            level: level,
-            role: role,
-            permissions: permissions
-          });
-        }
-      } else {
-        await register({
+      if (editingUser.id !== currentUser?.id && !isRootSubscriberAccount(editingUser)) {
+        throw new Error('Não é permitido alterar perfis vinculados a outro assinante por aqui.');
+      }
+      if (editingUser.id === currentUser?.id) {
+        const result = await updateAccount({
           name: cleanData.name,
-          username: cleanData.email,
           email: cleanData.email,
-          password: cleanData.password,
+          password: cleanData.password || undefined
+        });
+        if (result.error) throw new Error(result.error);
+      } else {
+        await updateUser(editingUser.id, {
+          name: cleanData.name,
           level: level,
           role: role,
           permissions: permissions
         });
       }
-      
-      setFormSuccess("Dados salvos com sucesso!");
+
+      setFormSuccess('Dados salvos com sucesso!');
       await refreshUsers();
-      
+
       setTimeout(() => {
-        setIsModalOpen(false);
+        setEditingUser(null);
         setFormSuccess(null);
       }, 1500);
-
     } catch (error: any) {
       console.error(error);
       let errorMsg = error.message;
@@ -296,9 +273,12 @@ export const AdminTenants = () => {
             <Eraser className="w-4 h-4 mr-2" /> Limpeza Manual
           </button>
 
-          <button onClick={() => handleOpenModal()} className="bg-petcare-dark text-white px-4 py-2 rounded-lg font-medium hover:bg-petcare-DEFAULT transition-colors flex items-center shadow-lg">
+          <Link
+            to="/tenants/new"
+            className="bg-petcare-dark text-white px-4 py-2 rounded-lg font-medium hover:bg-petcare-DEFAULT transition-colors flex items-center shadow-lg"
+          >
             <Plus className="w-4 h-4 mr-2" /> Novo Assinante
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -364,12 +344,11 @@ export const AdminTenants = () => {
                     <div className="flex justify-end gap-2 items-center flex-wrap">
                       <button
                         type="button"
-                        onClick={() => handleOpenModal(user)}
-                        className="text-blue-600 hover:text-blue-800 p-2 hover:bg-blue-50 rounded-lg transition-colors inline-flex items-center gap-1.5 text-sm font-medium"
+                        onClick={() => handleOpenEditModal(user)}
+                        className="text-blue-600 hover:text-blue-800 p-2 hover:bg-blue-50 rounded-lg transition-colors"
                         title={partnershipInfo?.labels?.length ? 'Editar assinante (vínculos de parceria permanecem na coluna Assinante)' : 'Editar assinante'}
                       >
                         <Edit2 className="w-4 h-4" />
-                        <span className="hidden sm:inline">Editar</span>
                       </button>
                       {user.level !== 1 && (
                         <button
@@ -451,7 +430,11 @@ export const AdminTenants = () => {
         </form>
       </Modal>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingUser ? (isEditingSelf ? "Editar Meus Dados" : "Editar Assinante") : "Novo Assinante"}>
+      <Modal
+        isOpen={!!editingUser}
+        onClose={() => setEditingUser(null)}
+        title={isEditingSelf ? 'Editar Meus Dados' : 'Editar Assinante'}
+      >
         <form onSubmit={handleSubmit} className="space-y-4">
           {formError && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-sm text-red-700 animate-fade-in">
@@ -491,33 +474,30 @@ export const AdminTenants = () => {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">E-mail de Acesso</label>
             <div className="relative">
-              <Mail className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${editingUser && !isEditingSelf ? 'text-gray-300' : 'text-gray-400'}`} />
+              <Mail className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${!isEditingSelf ? 'text-gray-300' : 'text-gray-400'}`} />
               <input 
                 type="email" 
                 required 
-                disabled={!!editingUser && !isEditingSelf}
+                disabled={!isEditingSelf}
                 value={formData.email} 
                 onChange={e => setFormData({...formData, email: e.target.value})} 
-                className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT ${editingUser && !isEditingSelf ? 'bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed' : 'border-gray-300'}`}
+                className={`w-full pl-10 pr-3 py-2 border rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT ${!isEditingSelf ? 'bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed' : 'border-gray-300'}`}
                 placeholder="usuario@email.com" 
               />
             </div>
           </div>
 
-          {(!editingUser || isEditingSelf) && (
+          {isEditingSelf && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                {isEditingSelf ? "Nova Senha" : "Senha Inicial"}
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nova Senha</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <input 
                   type="text" 
-                  required={!editingUser} 
                   value={formData.password} 
                   onChange={e => setFormData({...formData, password: e.target.value})} 
                   className="w-full px-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT" 
-                  placeholder={isEditingSelf ? "Deixe em branco para manter a atual" : "Mínimo 6 caracteres"} 
+                  placeholder="Deixe em branco para manter a atual"
                 />
               </div>
             </div>
@@ -599,7 +579,7 @@ export const AdminTenants = () => {
 
           <div className="pt-4">
             <button type="submit" disabled={isSaving} className="w-full bg-petcare-dark text-white py-3 rounded-xl font-bold hover:bg-petcare-DEFAULT transition-colors flex items-center justify-center shadow-lg disabled:opacity-70">
-              {isSaving ? 'Salvando...' : (editingUser ? 'Salvar Alterações' : 'Criar Assinatura')}
+              {isSaving ? 'Salvando...' : 'Salvar Alterações'}
             </button>
           </div>
         </form>
