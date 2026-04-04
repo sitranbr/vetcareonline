@@ -36,8 +36,19 @@ export const AdminTenants = () => {
 
   const [permissions, setPermissions] = useState<UserPermissions>(getDefaultPermissions(4));
 
+  /**
+   * Assinante raiz: clínica/vet cuja conta não pertence a outro owner (não é "filho" / convidado).
+   * Perfis com owner_id apontando para outro usuário são geridos pelo próprio assinante na equipe.
+   */
+  const isRootSubscriberAccount = (u: User) => {
+    if (u.level === 1) return true;
+    if (u.level !== 3 && u.level !== 4) return false;
+    return !u.ownerId || u.ownerId === u.id;
+  };
+
   const tenantUsers = users.filter(u => 
     (u.level === 1 || u.level === 3 || u.level === 4) &&
+    isRootSubscriberAccount(u) &&
     (u.name.toLowerCase().includes(searchTerm.toLowerCase()) || u.email.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
@@ -115,6 +126,10 @@ export const AdminTenants = () => {
     setFormSuccess(null);
     
     if (userToEdit) {
+      if (userToEdit.id !== currentUser?.id && !isRootSubscriberAccount(userToEdit)) {
+        alert('Este perfil está vinculado a um assinante (conta filha). Alterações são feitas pelo próprio assinante na gestão de equipe.');
+        return;
+      }
       setEditingUser(userToEdit);
       setFormData({
         name: userToEdit.name,
@@ -156,6 +171,9 @@ export const AdminTenants = () => {
 
     try {
       if (editingUser) {
+        if (editingUser.id !== currentUser?.id && !isRootSubscriberAccount(editingUser)) {
+          throw new Error('Não é permitido alterar perfis vinculados a outro assinante por aqui.');
+        }
         if (editingUser.id === currentUser?.id) {
           const result = await updateAccount({
             name: cleanData.name,
@@ -207,6 +225,11 @@ export const AdminTenants = () => {
   // FUNÇÃO DE EXCLUSÃO
   const handleConfirmDelete = async () => {
     if (!deleteConfirm) return;
+    const target = users.find(u => u.id === deleteConfirm);
+    if (target && target.id !== currentUser?.id && !isRootSubscriberAccount(target)) {
+      alert('Exclusão por aqui vale apenas para contas de assinante raiz. Remova perfis vinculados pela gestão de equipe do assinante.');
+      return;
+    }
     setIsDeleting(true);
     
     try {
@@ -305,8 +328,7 @@ export const AdminTenants = () => {
           <tbody className="bg-white divide-y divide-gray-200">
             {tenantUsers.map((user) => {
               const partnershipInfo = getPartnershipInfo(user);
-              const isPartnerManaged = partnershipInfo?.type === 'partner';
-              
+
               return (
               <tr key={user.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-6 py-4 whitespace-nowrap">
@@ -339,24 +361,25 @@ export const AdminTenants = () => {
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{user.email}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   {(user.level !== 1 || user.id === currentUser?.id) && (
-                    <div className="flex justify-end gap-2 items-center">
-                      
-                      {isPartnerManaged ? (
-                        <div className="flex items-center gap-1 text-gray-400 bg-gray-100 px-2 py-1 rounded text-xs" title={`Este usuário é gerenciado por ${partnershipInfo?.ownerName || 'outro assinante'}`}>
-                          <Lock className="w-3 h-3" />
-                          <span>Gerenciado pelo Assinante</span>
-                        </div>
-                      ) : (
-                        <>
-                          <button onClick={() => handleOpenModal(user)} className="text-blue-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-lg transition-colors" title="Editar Assinante">
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          {user.level !== 1 && (
-                            <button onClick={() => setDeleteConfirm(user.id)} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg transition-colors" title="Excluir Conta Completamente">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </>
+                    <div className="flex justify-end gap-2 items-center flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenModal(user)}
+                        className="text-blue-600 hover:text-blue-800 p-2 hover:bg-blue-50 rounded-lg transition-colors inline-flex items-center gap-1.5 text-sm font-medium"
+                        title={partnershipInfo?.labels?.length ? 'Editar assinante (vínculos de parceria permanecem na coluna Assinante)' : 'Editar assinante'}
+                      >
+                        <Edit2 className="w-4 h-4" />
+                        <span className="hidden sm:inline">Editar</span>
+                      </button>
+                      {user.level !== 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setDeleteConfirm(user.id)}
+                          className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Excluir conta completamente"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       )}
                     </div>
                   )}

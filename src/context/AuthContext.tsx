@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react';
 import { User, UserPermissions, TenantContext } from '../types';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { AuthError, createClient } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -293,7 +293,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const register = async (newUser: Omit<User, 'id'>) => {
-    const tempSupabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+    const tempSupabase = createClient(supabaseUrl, supabaseAnonKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
     let ownerIdToSet = newUser.ownerId;
     if (user && user.level !== 1) { ownerIdToSet = user.ownerId || user.id; }
     const { data, error: authError } = await tempSupabase.auth.signUp({

@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://pdiihywgdrclonsvdtrl.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkaWloeXdnZHJjbG9uc3ZkdHJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3MDAxNjksImV4cCI6MjA4MDI3NjE2OX0.OgP-Hes0_sPjc5IbM-8MukcUfCN_iLRBxQquQoIPUZA';
+/** Exportados para clientes secundários (ex.: signUp sem trocar a sessão do admin) — mesmos fallbacks do app. */
+export const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://pdiihywgdrclonsvdtrl.supabase.co';
+export const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBkaWloeXdnZHJjbG9uc3ZkdHJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3MDAxNjksImV4cCI6MjA4MDI3NjE2OX0.OgP-Hes0_sPjc5IbM-8MukcUfCN_iLRBxQquQoIPUZA';
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('❌ Supabase credentials missing!');
@@ -32,7 +33,4 @@ if (!supabaseUrl || !supabaseAnonKey) {
   }
 }
 
-export const supabase = createClient(
-  supabaseUrl || '', 
-  supabaseAnonKey || ''
-);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
