@@ -585,7 +585,8 @@ export const OperationalDashboard = () => {
         { value: 'USG', label: 'Ultrassom', isCustom: false },
         { value: 'RX', label: 'Raio-X', isCustom: false },
         { value: 'RX_CONTROLE', label: 'Raio-X Controle', isCustom: false },
-        { value: 'USG_FAST', label: 'USG Fast', isCustom: false }
+        { value: 'USG_FAST', label: 'USG Fast', isCustom: false },
+        { value: 'RX_FAST', label: 'Raio-X FAST', isCustom: false }
       ];
       
       baseModalities.forEach(bm => {
@@ -1585,7 +1586,7 @@ export const OperationalDashboard = () => {
                           </div>
                         )}
                         
-                        {item.modality === 'RX' && (
+                        {(item.modality === 'RX' || item.modality === 'RX_FAST') && (
                           <div className="animate-fade-in">
                             <label className="block text-xs font-bold text-gray-500 mb-1">Nº de Estudos/Projeções</label>
                             <input 
@@ -1599,7 +1600,7 @@ export const OperationalDashboard = () => {
                         )}
 
                         {item.modality !== 'OUTROS' && (
-                          <div className={item.modality === 'RX' ? '' : 'md:col-span-2'}>
+                          <div className={item.modality === 'RX' || item.modality === 'RX_FAST' ? '' : 'md:col-span-2'}>
                             <label className="block text-xs font-bold text-gray-500 mb-1">Descrição / Região (Opcional)</label>
                             <input 
                               type="text" 
@@ -2141,6 +2142,7 @@ export const OperationalDashboard = () => {
                 <option value="RX">Raio-X</option>
                 <option value="RX_CONTROLE">Raio-X Controle</option>
                 <option value="USG_FAST">Ultrassom FAST</option>
+                <option value="RX_FAST">Raio-X FAST</option>
                 <option value="OUTROS">Outro (Novo Exame)</option>
               </select>
             </div>

@@ -69,7 +69,7 @@ export const calculateExamValues = (
     additionalRepasseProf = Number(rule.taxaExtraProfessional) || 0;
   }
 
-  if (modality === 'RX') {
+  if (modality === 'RX' || modality === 'RX_FAST') {
     baseValue *= studies;
     baseRepasseProf *= studies;
   }
@@ -107,6 +107,7 @@ export const getModalityLabel = (m: Modality, customName?: string) => {
     RX: 'Raio-X',
     RX_CONTROLE: 'Raio-X Controle',
     USG_FAST: 'Ultrassom FAST',
+    RX_FAST: 'Raio-X FAST',
     OUTROS: customName || 'Outro Exame',
   };
   return map[m] || m;

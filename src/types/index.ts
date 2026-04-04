@@ -123,7 +123,7 @@ export interface Clinic extends BrandingInfo {
 
 // -----------------------
 
-export type Modality = 'USG' | 'RX' | 'RX_CONTROLE' | 'USG_FAST' | string;
+export type Modality = 'USG' | 'RX' | 'RX_CONTROLE' | 'USG_FAST' | 'RX_FAST' | string;
 export type Period = 'comercial' | 'noturno' | 'fds' | 'feriado';
 export type MachineOwner = 'professional' | 'clinic'; 
 
