@@ -83,7 +83,10 @@ export const OperationalDashboard = () => {
 
   const [priceForm, setPriceForm] = useState<Partial<PriceRule>>({ clinicId: '', veterinarianId: '', modality: 'USG', period: 'comercial', valor: undefined, repasseProfessional: undefined, repasseClinic: undefined, taxaExtra: undefined, taxaExtraProfessional: undefined, taxaExtraClinic: undefined, observacoes: '' });
   const [customModalityName, setCustomModalityName] = useState('');
-  const [selectedClinicFilter, setSelectedClinicFilter] = useState<string>(''); 
+  const [selectedClinicFilter, setSelectedClinicFilter] = useState<string>('');
+  /** Filtros da listagem da tabela de preços (período / veterinário parceiro). */
+  const [priceTablePeriodFilter, setPriceTablePeriodFilter] = useState<string>('');
+  const [priceTableVetFilter, setPriceTableVetFilter] = useState<string>('');
   const [copyFromScope, setCopyFromScope] = useState<string>(''); 
   const [copyToScope, setCopyToScope] = useState<string>(''); 
 
@@ -1740,47 +1743,85 @@ export const OperationalDashboard = () => {
 
         {activeTab === 'prices' && canManagePrices && (
           <div className="p-6">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                <Tag className="w-6 h-6 text-petcare-DEFAULT" />
-                Tabela de Preços
-              </h2>
-              <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
-                {(loggedUserEntity?.type === 'vet' || currentTenant?.type === 'vet') && availableClinicsForVet.length > 0 && (
-                  <>
-                    {(() => {
-                      const isGuest = user?.ownerId && user.ownerId !== user.id;
-                      if (isGuest && availableClinicsForVet.length === 1) {
+            <div className="flex flex-col gap-4 mb-6">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                  <Tag className="w-6 h-6 text-petcare-DEFAULT" />
+                  Tabela de Preços
+                </h2>
+                <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+                  {(loggedUserEntity?.type === 'vet' || currentTenant?.type === 'vet') && availableClinicsForVet.length > 0 && (
+                    <>
+                      {(() => {
+                        const isGuest = user?.ownerId && user.ownerId !== user.id;
+                        if (isGuest && availableClinicsForVet.length === 1) {
+                          return (
+                            <div className="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 text-gray-600">
+                              {availableClinicsForVet[0]?.name || 'Clínica'}
+                            </div>
+                          );
+                        }
                         return (
-                          <div className="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 text-gray-600">
-                            {availableClinicsForVet[0]?.name || 'Clínica'}
-                          </div>
+                          <select
+                            value={selectedClinicFilter}
+                            onChange={(e) => setSelectedClinicFilter(e.target.value)}
+                            className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-petcare-DEFAULT focus:border-petcare-DEFAULT bg-white"
+                          >
+                            <option value="">Todas as Clínicas</option>
+                            {availableClinicsForVet.map(c => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
                         );
-                      }
-                      return (
-                        <select
-                          value={selectedClinicFilter}
-                          onChange={(e) => setSelectedClinicFilter(e.target.value)}
-                          className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-petcare-DEFAULT focus:border-petcare-DEFAULT bg-white"
-                        >
-                          <option value="">Todas as Clínicas</option>
-                          {availableClinicsForVet.map(c => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
-                        </select>
-                      );
-                    })()}
-                  </>
-                )}
-                {loggedUserEntity?.type === 'clinic' && (
-                  <div className="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 text-gray-600">
-                    {currentTenant?.name || 'Clínica Atual'}
+                      })()}
+                    </>
+                  )}
+                  {loggedUserEntity?.type === 'clinic' && (
+                    <div className="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 text-gray-600">
+                      {currentTenant?.name || 'Clínica Atual'}
+                    </div>
+                  )}
+                  {canCreatePriceRule && (
+                    <button onClick={() => handleOpenPriceModal()} className="bg-petcare-dark text-white px-4 py-2 rounded-lg font-bold hover:bg-petcare-DEFAULT transition-colors flex items-center gap-2 whitespace-nowrap">
+                      <Plus className="w-4 h-4" /> Nova Regra
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-stretch sm:items-center p-3 bg-gray-50/80 rounded-xl border border-gray-100">
+                <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-initial sm:min-w-[200px]">
+                  <Calendar className="w-4 h-4 text-gray-500 shrink-0" aria-hidden />
+                  <label htmlFor="price-table-period-filter" className="sr-only">Filtrar por período</label>
+                  <select
+                    id="price-table-period-filter"
+                    value={priceTablePeriodFilter}
+                    onChange={(e) => setPriceTablePeriodFilter(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:ring-2 focus:ring-petcare-light/50 outline-none"
+                  >
+                    <option value="">Todos os períodos</option>
+                    <option value="comercial">{getPeriodLabel('comercial')}</option>
+                    <option value="noturno">{getPeriodLabel('noturno')}</option>
+                    <option value="fds">{getPeriodLabel('fds')}</option>
+                    <option value="feriado">{getPeriodLabel('feriado')}</option>
+                  </select>
+                </div>
+                {availableVeterinarians.length > 1 && (
+                  <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-initial sm:min-w-[220px]">
+                    <Stethoscope className="w-4 h-4 text-gray-500 shrink-0" aria-hidden />
+                    <label htmlFor="price-table-vet-filter" className="sr-only">Filtrar por veterinário ou parceiro</label>
+                    <select
+                      id="price-table-vet-filter"
+                      value={priceTableVetFilter}
+                      onChange={(e) => setPriceTableVetFilter(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:ring-2 focus:ring-petcare-light/50 outline-none"
+                    >
+                      <option value="">Todos os veterinários / parceiros</option>
+                      {availableVeterinarians.map((v) => (
+                        <option key={v.id} value={v.id}>{v.name}</option>
+                      ))}
+                    </select>
                   </div>
-                )}
-                {canCreatePriceRule && (
-                  <button onClick={() => handleOpenPriceModal()} className="bg-petcare-dark text-white px-4 py-2 rounded-lg font-bold hover:bg-petcare-DEFAULT transition-colors flex items-center gap-2 whitespace-nowrap">
-                    <Plus className="w-4 h-4" /> Nova Regra
-                  </button>
                 )}
               </div>
             </div>
@@ -1881,7 +1922,45 @@ export const OperationalDashboard = () => {
                       );
                     }
 
-                    return finalVisibleRules.map(rule => {
+                    let rowsForTable = finalVisibleRules;
+                    if (priceTablePeriodFilter) {
+                      rowsForTable = rowsForTable.filter(
+                        (r) => r.period === 'all' || r.period === priceTablePeriodFilter
+                      );
+                    }
+                    if (priceTableVetFilter) {
+                      rowsForTable = rowsForTable.filter((r) => {
+                        const vid = (r.veterinarianId || '').trim();
+                        const isGenericVet = !vid || vid === 'default';
+                        return isGenericVet || vid === priceTableVetFilter;
+                      });
+                    }
+
+                    const periodSortRank: Record<string, number> = {
+                      comercial: 1,
+                      noturno: 2,
+                      fds: 3,
+                      feriado: 4,
+                      all: 5,
+                    };
+                    rowsForTable = [...rowsForTable].sort((a, b) => {
+                      const ra = periodSortRank[a.period] ?? 99;
+                      const rb = periodSortRank[b.period] ?? 99;
+                      if (ra !== rb) return ra - rb;
+                      return (a.label || '').localeCompare(b.label || '', 'pt-BR', { sensitivity: 'base' });
+                    });
+
+                    if (rowsForTable.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={(canEditPriceRule || canDeletePriceRule) ? 6 : 5} className="p-8 text-center text-gray-400">
+                            Nenhuma regra corresponde aos filtros de período ou veterinário. Ajuste os filtros acima.
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return rowsForTable.map(rule => {
                       const isGenericClinic = !rule.clinicId || rule.clinicId === '' || rule.clinicId === 'default';
                       const clinicName = isGenericClinic ? 'Todas as Clínicas' : (clinics.find(c => c.id === rule.clinicId?.trim())?.name || availableClinicsForVet.find(c => c.id === rule.clinicId?.trim())?.name || 'Clínica Específica');
                       
