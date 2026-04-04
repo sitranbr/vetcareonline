@@ -84,9 +84,10 @@ export const OperationalDashboard = () => {
   const [priceForm, setPriceForm] = useState<Partial<PriceRule>>({ clinicId: '', veterinarianId: '', modality: 'USG', period: 'comercial', valor: undefined, repasseProfessional: undefined, repasseClinic: undefined, taxaExtra: undefined, taxaExtraProfessional: undefined, taxaExtraClinic: undefined, observacoes: '' });
   const [customModalityName, setCustomModalityName] = useState('');
   const [selectedClinicFilter, setSelectedClinicFilter] = useState<string>('');
-  /** Filtros da listagem da tabela de preços (período / veterinário parceiro). */
+  /** Filtros da listagem da tabela de preços (período / veterinário / exame). */
   const [priceTablePeriodFilter, setPriceTablePeriodFilter] = useState<string>('');
   const [priceTableVetFilter, setPriceTableVetFilter] = useState<string>('');
+  const [priceTableExamFilter, setPriceTableExamFilter] = useState<string>('');
   const [copyFromScope, setCopyFromScope] = useState<string>(''); 
   const [copyToScope, setCopyToScope] = useState<string>(''); 
 
@@ -1131,6 +1132,19 @@ export const OperationalDashboard = () => {
     });
   }, [priceRules, priceForm.clinicId, priceForm.veterinarianId, priceForm.modality, priceForm.period, editingPrice]);
 
+  const priceTableExamOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { value: string; label: string }[] = [];
+    priceRules.forEach((r) => {
+      const value = JSON.stringify({ m: r.modality, l: r.label ?? '' });
+      if (seen.has(value)) return;
+      seen.add(value);
+      const display = (r.label && r.label.trim()) ? r.label : getModalityLabel(r.modality as Modality);
+      out.push({ value, label: display });
+    });
+    return out.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR', { sensitivity: 'base' }));
+  }, [priceRules]);
+
   return (
     <div className="space-y-6">
       {isLoadingData && (
@@ -1823,6 +1837,21 @@ export const OperationalDashboard = () => {
                     </select>
                   </div>
                 )}
+                <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-initial sm:min-w-[200px]">
+                  <FileText className="w-4 h-4 text-gray-500 shrink-0" aria-hidden />
+                  <label htmlFor="price-table-exam-filter" className="sr-only">Filtrar por exame ou modalidade</label>
+                  <select
+                    id="price-table-exam-filter"
+                    value={priceTableExamFilter}
+                    onChange={(e) => setPriceTableExamFilter(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:ring-2 focus:ring-petcare-light/50 outline-none"
+                  >
+                    <option value="">Todos os exames</option>
+                    {priceTableExamOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -1935,6 +1964,16 @@ export const OperationalDashboard = () => {
                         return isGenericVet || vid === priceTableVetFilter;
                       });
                     }
+                    if (priceTableExamFilter) {
+                      try {
+                        const parsed = JSON.parse(priceTableExamFilter) as { m: string; l: string };
+                        rowsForTable = rowsForTable.filter(
+                          (r) => r.modality === parsed.m && (r.label ?? '') === (parsed.l ?? '')
+                        );
+                      } catch {
+                        /* valor inválido: ignora filtro de exame */
+                      }
+                    }
 
                     const periodSortRank: Record<string, number> = {
                       comercial: 1,
@@ -1954,7 +1993,7 @@ export const OperationalDashboard = () => {
                       return (
                         <tr>
                           <td colSpan={(canEditPriceRule || canDeletePriceRule) ? 6 : 5} className="p-8 text-center text-gray-400">
-                            Nenhuma regra corresponde aos filtros de período ou veterinário. Ajuste os filtros acima.
+                            Nenhuma regra corresponde aos filtros selecionados (período, veterinário ou exame). Ajuste os filtros acima.
                           </td>
                         </tr>
                       );
