@@ -1181,9 +1181,10 @@ export const OperationalDashboard = () => {
   }, [filteredExamsForReport]);
 
   const addItem = () => {
+    const newItem = { id: Date.now().toString(), modality: '' as Modality | '', studies: 1, studyDescription: '', rxStudies: [] };
     setFormData(prev => ({
       ...prev,
-      items: [...prev.items, { id: Date.now().toString(), modality: '' as Modality | '', studies: 1, studyDescription: '', rxStudies: [] }]
+      items: [newItem, ...prev.items]
     }));
   };
 
