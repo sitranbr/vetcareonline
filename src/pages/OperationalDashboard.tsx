@@ -609,22 +609,30 @@ export const OperationalDashboard = () => {
     const examsMap = new Map<string, { value: string, label: string, isCustom: boolean }>();
     const cleanEffectiveId = (effectiveClinicId || '').trim();
     const safeVetId = (formData.veterinarianId || '').trim();
+    const selectedPeriod = formData.period;
 
-    const relevantRules = priceRules.filter(r => {
+    const clinicVetRules = priceRules.filter(r => {
       const ruleClinicId = (r.clinicId || '').trim();
       const ruleVetId = (r.veterinarianId || '').trim();
-      
+
       const clinicMatch = !ruleClinicId || ruleClinicId === 'default' || ruleClinicId === cleanEffectiveId;
       const vetMatch = !ruleVetId || ruleVetId === 'default' || ruleVetId === safeVetId;
-      
+
       return clinicMatch && vetMatch;
     });
 
-    const blockModalityFallbacks =
-      isIndependentVetSubscriber && relevantRules.length === 0;
+    /** Só lista modalidades com preço cadastrado para o período selecionado (ou período "all"). */
+    const periodPricedRules = clinicVetRules.filter(r => {
+      const periodOk = r.period === 'all' || r.period === selectedPeriod;
+      const priced = r.valor != null && Number(r.valor) > 0;
+      return periodOk && priced;
+    });
 
-    if (relevantRules.length > 0) {
-      relevantRules.forEach(r => {
+    const blockModalityFallbacks =
+      isIndependentVetSubscriber && clinicVetRules.length === 0;
+
+    if (periodPricedRules.length > 0) {
+      periodPricedRules.forEach(r => {
         if (r.modality === 'OUTROS') {
           const val = `OUTROS|${r.label}`;
           if (!examsMap.has(val)) {
@@ -655,7 +663,7 @@ export const OperationalDashboard = () => {
     }
 
     return Array.from(examsMap.values());
-  }, [priceRules, effectiveClinicId, formData.veterinarianId, isIndependentVetSubscriber]);
+  }, [priceRules, effectiveClinicId, formData.veterinarianId, formData.period, isIndependentVetSubscriber]);
 
   const availablePeriods = useMemo(() => {
     const cleanEffectiveId = (effectiveClinicId || '').trim();
@@ -720,6 +728,33 @@ export const OperationalDashboard = () => {
       }
     }
   }, [availablePeriods, formData.period, activeTab]);
+
+  /** Ao mudar período (ou regras), remove seleção de exame que não tem preço naquele período. */
+  useEffect(() => {
+    if (activeTab !== 'form') return;
+    setFormData((prev) => {
+      const opts = availableExamsForSelectedClinic;
+      let changed = false;
+      const nextItems = prev.items.map((item) => {
+        if (!item.modality) return item;
+        const currentValue =
+          item.modality === 'OUTROS' ? `OUTROS|${item.studyDescription || ''}` : item.modality;
+        const valid = opts.some((opt) => opt.value === currentValue);
+        if (!valid) {
+          changed = true;
+          return {
+            ...item,
+            modality: '' as Modality | '',
+            studyDescription: '',
+            rxStudies: []
+          };
+        }
+        return item;
+      });
+      if (!changed) return prev;
+      return { ...prev, items: nextItems };
+    });
+  }, [activeTab, formData.period, availableExamsForSelectedClinic]);
 
   const handleSaveExam = async (e: React.FormEvent) => {
     e.preventDefault();
