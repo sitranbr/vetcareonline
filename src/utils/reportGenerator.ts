@@ -21,7 +21,7 @@ const PDF_FONT_INTER = 'Inter';
 const PDF_TABLE_BODY_PT = 7;
 const PDF_TABLE_HEAD_PT = 7.5;
 /** Linha SUBTOTAL / totais: menor para evitar quebra em células estreitas. */
-const PDF_TABLE_FOOT_PT = 6.5;
+const PDF_TABLE_FOOT_PT = 7;
 
 /** Textos fora da tabela no relatório financeiro. */
 const PDF_REPORT_META_PT = 8;
