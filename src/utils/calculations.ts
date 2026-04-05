@@ -14,7 +14,8 @@ export const calculateExamValues = (
   studies: number = 1,
   clinicId: string,
   customStudyDescription?: string,
-  veterinarianId?: string
+  veterinarianId?: string,
+  options?: { noClinicPartner?: boolean }
 ): CalculationResult => {
   
   const safeClinicId = (clinicId || '').trim();
@@ -81,6 +82,10 @@ export const calculateExamValues = (
   if (machineOwner === 'professional') {
     finalRepasseClinic = totalValue - finalRepasseProf;
   } else {
+    finalRepasseClinic = 0;
+  }
+
+  if (options?.noClinicPartner) {
     finalRepasseClinic = 0;
   }
 

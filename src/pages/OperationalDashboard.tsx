@@ -601,8 +601,13 @@ export const OperationalDashboard = () => {
   };
 
   let effectiveClinicId = formData.clinicId;
-  if (!effectiveClinicId && selectedClinicFilter) effectiveClinicId = selectedClinicFilter;
-  if (!effectiveClinicId && loggedUserEntity?.type === 'clinic') effectiveClinicId = loggedUserEntity.id;
+  /** Veterinário com "Sem clínica" explícito: não herdar filtro da lista (evita repasse indevido à clínica). */
+  const vetChoseNoClinic =
+    loggedUserEntity?.type === 'vet' && !(formData.clinicId || '').trim();
+  if (!vetChoseNoClinic) {
+    if (!effectiveClinicId && selectedClinicFilter) effectiveClinicId = selectedClinicFilter;
+    if (!effectiveClinicId && loggedUserEntity?.type === 'clinic') effectiveClinicId = loggedUserEntity.id;
+  }
   if (!effectiveClinicId) effectiveClinicId = '';
 
   const availableExamsForSelectedClinic = useMemo(() => {
@@ -656,10 +661,6 @@ export const OperationalDashboard = () => {
       baseModalities.forEach(bm => {
         examsMap.set(bm.value, bm);
       });
-    }
-
-    if (!examsMap.has('OUTROS|') && !blockModalityFallbacks) {
-      examsMap.set('OUTROS|', { value: 'OUTROS|', label: 'Outro (Novo Exame)', isCustom: true });
     }
 
     return Array.from(examsMap.values());
@@ -775,7 +776,17 @@ export const OperationalDashboard = () => {
           : rawClinic || null;
 
       const examsToSave = formData.items.map(item => {
-        const values = calculateExamValues(item.modality, formData.period, formData.machineOwner, priceRules, item.studies, effectiveClinicId, item.studyDescription, formData.veterinarianId);
+        const values = calculateExamValues(
+          item.modality,
+          formData.period,
+          formData.machineOwner,
+          priceRules,
+          item.studies,
+          effectiveClinicId,
+          item.studyDescription,
+          formData.veterinarianId,
+          { noClinicPartner: vetChoseNoClinic }
+        );
         
         return {
           date: formData.date,
@@ -1202,7 +1213,8 @@ export const OperationalDashboard = () => {
         item.studies, 
         effectiveClinicId,
         item.studyDescription,
-        formData.veterinarianId
+        formData.veterinarianId,
+        { noClinicPartner: vetChoseNoClinic }
       );
       return {
         total: acc.total + values.totalValue,
@@ -1210,7 +1222,7 @@ export const OperationalDashboard = () => {
         clinic: acc.clinic + values.repasseClinic
       };
     }, { total: 0, prof: 0, clinic: 0 });
-  }, [formData.items, formData.period, formData.machineOwner, effectiveClinicId, priceRules, formData.veterinarianId]);
+  }, [formData.items, formData.period, formData.machineOwner, effectiveClinicId, priceRules, formData.veterinarianId, vetChoseNoClinic]);
 
   const selectedPartnerScope = priceForm.clinicId
     ? `clinic|${priceForm.clinicId}`
@@ -1718,7 +1730,7 @@ export const OperationalDashboard = () => {
                     const selectValue = item.modality === 'OUTROS'
                       ? (availableExamsForSelectedClinic.some(opt => opt.value === `OUTROS|${item.studyDescription || ''}`)
                           ? `OUTROS|${item.studyDescription || ''}`
-                          : 'OUTROS|')
+                          : '')
                       : item.modality;
 
                     return (
@@ -1761,20 +1773,6 @@ export const OperationalDashboard = () => {
                             ))}
                           </select>
                         </div>
-                        
-                        {item.modality === 'OUTROS' && (
-                          <div className="md:col-span-2 animate-fade-in">
-                            <label className="block text-xs font-bold text-gray-500 mb-1">Nome do Novo Exame</label>
-                            <input 
-                              type="text" 
-                              required
-                              value={item.studyDescription || ''} 
-                              onChange={e => updateItem(item.id, 'studyDescription', e.target.value)} 
-                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT"
-                              placeholder="Digite o nome do exame..."
-                            />
-                          </div>
-                        )}
                         
                         {(item.modality === 'RX' || item.modality === 'RX_FAST') && (
                           <div className="animate-fade-in">
