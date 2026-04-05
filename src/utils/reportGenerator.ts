@@ -18,10 +18,17 @@ const COLORS = {
 const PDF_FONT_FALLBACK = 'helvetica';
 const PDF_FONT_INTER = 'Inter';
 
-const PDF_TABLE_BODY_PT = 8.5;
-const PDF_TABLE_HEAD_PT = 9;
+const PDF_TABLE_BODY_PT = 6;
+const PDF_TABLE_HEAD_PT = 7;
 /** Linha SUBTOTAL / totais: menor para evitar quebra em células estreitas. */
-const PDF_TABLE_FOOT_PT = 6.2;
+const PDF_TABLE_FOOT_PT = 6;
+
+/** Textos fora da tabela no relatório financeiro. */
+const PDF_REPORT_META_PT = 8;
+const PDF_REPORT_META_SIDE_PT = 7;
+const PDF_REPORT_SUMMARY_TITLE_PT = 9;
+const PDF_REPORT_SUMMARY_BODY_PT = 8;
+const PDF_REPORT_GROUP_TITLE_PT = 9;
 
 function arrayBufferToBinaryString(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -75,7 +82,7 @@ const addHeader = async (doc: jsPDF, title: string, branding: BrandingInfo, font
       doc.addImage(logoImg, 'PNG', 14, 10, 35, 14, undefined, 'FAST');
     } else {
       // Fallback text logo if image fails or doesn't exist
-      doc.setFontSize(14);
+      doc.setFontSize(12);
       doc.setFont(fontName, 'bold');
       doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
       // REBRANDING: Alterado fallback de PIQUET para Petcare
@@ -83,7 +90,7 @@ const addHeader = async (doc: jsPDF, title: string, branding: BrandingInfo, font
     }
   } catch (e) {
     console.warn('Logo loading failed', e);
-    doc.setFontSize(14);
+    doc.setFontSize(12);
     doc.setFont(fontName, 'bold');
     doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
     // REBRANDING: Alterado fallback de PIQUET para Petcare
@@ -91,11 +98,11 @@ const addHeader = async (doc: jsPDF, title: string, branding: BrandingInfo, font
   }
 
   doc.setFont(fontName, 'bold');
-  doc.setFontSize(20);
+  doc.setFontSize(18);
   doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
   doc.text(title, 195, 20, { align: 'right' });
   
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.setFont(fontName, 'normal');
   doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
   doc.text(branding.name || 'Sistema Veterinário', 195, 25, { align: 'right' });
@@ -108,7 +115,7 @@ const addHeader = async (doc: jsPDF, title: string, branding: BrandingInfo, font
 const addFooter = (doc: jsPDF, branding: BrandingInfo, pageNumber: number, totalPages: number | null = null, fontName: string = PDF_FONT_FALLBACK) => {
     const pageHeight = doc.internal.pageSize.height;
     const pageWidth = doc.internal.pageSize.width;
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setTextColor(130);
     doc.setFont(fontName, 'normal');
     doc.setDrawColor(200);
@@ -134,13 +141,13 @@ const renderHtmlToPdf = (doc: jsPDF, html: string, startX: number, startY: numbe
     .replace(/&nbsp;/g, ' ');
 
   const tokens = text.split(/(<\/?(?:b|strong|i|em|u)>)/g);
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.setFont(fontName, 'normal');
   doc.setTextColor(0, 0, 0);
   
   let cursorX = startX;
   let cursorY = startY;
-  const lineHeight = 5.5;
+  const lineHeight = 5;
   const spaceWidth = doc.getTextWidth(' ');
 
   let isBold = false;
@@ -223,13 +230,13 @@ export const generatePDFReport = async (
   const periodEnd = format(parseISO(endDate), "dd/MM/yyyy");
   
   doc.setFont(pdfFont, 'normal');
-  doc.setFontSize(10);
+  doc.setFontSize(PDF_REPORT_META_PT);
   doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
   doc.text(`Gerado por: ${user.name}`, 14, 42);
   doc.text(`Data de Emissão: ${today}`, 14, 47);
   doc.text(`Período: ${periodStart} até ${periodEnd}`, 14, 52);
   
-  doc.setFontSize(8);
+  doc.setFontSize(PDF_REPORT_META_SIDE_PT);
   doc.setTextColor(150);
   doc.text(`${branding.name} | ${branding.document || ''}`, 195, 42, { align: 'right' });
   doc.text(branding.address || '', 195, 47, { align: 'right' });
@@ -246,12 +253,12 @@ export const generatePDFReport = async (
   // Caixa de Resumo Financeiro Geral
   doc.setFillColor(COLORS.lightBg[0], COLORS.lightBg[1], COLORS.lightBg[2]);
   doc.roundedRect(14, startY, 182, boxHeight, 3, 3, 'F');
-  doc.setFontSize(11);
+  doc.setFontSize(PDF_REPORT_SUMMARY_TITLE_PT);
   doc.setFont(pdfFont, 'bold');
   doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
   doc.text('Resumo Financeiro Geral', 18, startY + 8);
   
-  doc.setFontSize(10);
+  doc.setFontSize(PDF_REPORT_SUMMARY_BODY_PT);
   doc.setFont(pdfFont, 'normal');
   doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
   doc.text('Qtd. Exames:', 18, startY + 18);
@@ -286,7 +293,7 @@ export const generatePDFReport = async (
   }
 
   if (reportExams.length === 0) {
-    doc.setFontSize(12);
+    doc.setFontSize(10);
     doc.setFont(pdfFont, 'normal');
     doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
     doc.text('Nenhum exame encontrado no período selecionado.', 14, startY + boxHeight + 20);
@@ -318,8 +325,9 @@ export const generatePDFReport = async (
 
   let currentY = startY + boxHeight + 10;
 
-  const tableHeaders = ['Data', 'PET', 'Solicitante', 'Modalidade', 'Período', 'Máquina', 'Valor'];
-  if (canViewFinancials) tableHeaders.push('R. Prof', 'R. Clínica');
+  /** Rótulos curtos para caber melhor no cabeçalho com fonte reduzida. */
+  const tableHeaders = ['Data', 'PET', 'Solicit.', 'Modalidade', 'Período', 'Máquina', 'Valor'];
+  if (canViewFinancials) tableHeaders.push('R. Prof.', 'R. Clín.');
 
   groups.forEach(group => {
     if (group.title) {
@@ -327,7 +335,7 @@ export const generatePDFReport = async (
         doc.addPage();
         currentY = 20;
       }
-      doc.setFontSize(11);
+      doc.setFontSize(PDF_REPORT_GROUP_TITLE_PT);
       doc.setFont(pdfFont, 'bold');
       doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
       doc.text(group.title, 14, currentY);
@@ -366,12 +374,12 @@ export const generatePDFReport = async (
 
     /** Larguras em mm (soma = 182, largura útil da tabela) para evitar quebra no SUBTOTAL/valores. */
     const columnStylesFinancial: Record<number, unknown> = {
-      0: { cellWidth: 22, halign: 'center', valign: 'middle' },
-      1: { cellWidth: 19, valign: 'middle' },
-      2: { cellWidth: 21, valign: 'middle' },
-      3: { cellWidth: 27, valign: 'middle' },
-      4: { cellWidth: 16, halign: 'center', valign: 'middle' },
-      5: { cellWidth: 14, halign: 'center', valign: 'middle' },
+      0: { cellWidth: 20, halign: 'center', valign: 'middle' },
+      1: { cellWidth: 18, valign: 'middle' },
+      2: { cellWidth: 22, valign: 'middle' },
+      3: { cellWidth: 25, valign: 'middle' },
+      4: { cellWidth: 18, halign: 'center', valign: 'middle' },
+      5: { cellWidth: 16, halign: 'center', valign: 'middle' },
       6: { cellWidth: 21, halign: 'right', fontStyle: 'bold', valign: 'middle' },
       7: { cellWidth: 21, halign: 'right', textColor: COLORS.primary, valign: 'middle' },
       8: { cellWidth: 21, halign: 'right', textColor: COLORS.dark, valign: 'middle' }
@@ -396,7 +404,7 @@ export const generatePDFReport = async (
       styles: {
         font: pdfFont,
         fontSize: PDF_TABLE_BODY_PT,
-        cellPadding: 2.5,
+        cellPadding: 2,
         textColor: COLORS.text,
         lineColor: [220, 220, 220],
         lineWidth: 0.1,
@@ -411,7 +419,7 @@ export const generatePDFReport = async (
         fontStyle: 'bold',
         halign: 'center',
         valign: 'middle',
-        cellPadding: 3
+        cellPadding: 2.5
       },
       bodyStyles: {
         font: pdfFont,
@@ -427,7 +435,7 @@ export const generatePDFReport = async (
         fontStyle: 'bold',
         halign: 'right',
         valign: 'middle',
-        cellPadding: 2
+        cellPadding: 1.5
       },
       didParseCell: (data) => {
         if (data.section === 'foot' && data.column.index === 0) {
