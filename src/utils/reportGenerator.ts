@@ -14,6 +14,50 @@ const COLORS = {
   lightBg: [244, 249, 249]
 };
 
+/** Fallback se Inter (public/fonts/Inter-VF.ttf) não carregar. */
+const PDF_FONT_FALLBACK = 'helvetica';
+const PDF_FONT_INTER = 'Inter';
+
+const PDF_TABLE_BODY_PT = 8.5;
+const PDF_TABLE_HEAD_PT = 9;
+/** Linha SUBTOTAL / totais: menor para evitar quebra em células estreitas. */
+const PDF_TABLE_FOOT_PT = 6.2;
+
+function arrayBufferToBinaryString(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunk = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunk) {
+    const sub = bytes.subarray(i, i + chunk);
+    binary += String.fromCharCode.apply(null, sub as unknown as number[]);
+  }
+  return binary;
+}
+
+/**
+ * Incorpora Inter (arquivo em `public/fonts/Inter-VF.ttf`, variável).
+ * Retorna o nome registrado no jsPDF ou `helvetica` em falha.
+ */
+async function registerInterFonts(doc: jsPDF): Promise<string> {
+  const docAny = doc as unknown as Record<string, boolean>;
+  if (docAny.__pdfInterFontOk) return PDF_FONT_INTER;
+  try {
+    const base = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
+    const res = await fetch(`${base}fonts/Inter-VF.ttf`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const bin = arrayBufferToBinaryString(await res.arrayBuffer());
+    const fileName = 'Inter-VF.ttf';
+    doc.addFileToVFS(fileName, bin);
+    doc.addFont(fileName, PDF_FONT_INTER, 'normal');
+    doc.addFont(fileName, PDF_FONT_INTER, 'bold');
+    docAny.__pdfInterFontOk = true;
+    return PDF_FONT_INTER;
+  } catch (e) {
+    console.warn('Petcare PDF: Inter não carregada; usando Helvetica.', e);
+    return PDF_FONT_FALLBACK;
+  }
+}
+
 const loadImage = (url: string): Promise<HTMLImageElement> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -24,7 +68,7 @@ const loadImage = (url: string): Promise<HTMLImageElement> => {
 };
 
 // Agora aceita BrandingInfo (Vet ou Clínica) em vez de ClinicSettings global
-const addHeader = async (doc: jsPDF, title: string, branding: BrandingInfo) => {
+const addHeader = async (doc: jsPDF, title: string, branding: BrandingInfo, fontName: string = PDF_FONT_FALLBACK) => {
   try {
     if (branding.logoUrl) {
       const logoImg = await loadImage(branding.logoUrl);
@@ -32,7 +76,7 @@ const addHeader = async (doc: jsPDF, title: string, branding: BrandingInfo) => {
     } else {
       // Fallback text logo if image fails or doesn't exist
       doc.setFontSize(14);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(fontName, 'bold');
       doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
       // REBRANDING: Alterado fallback de PIQUET para Petcare
       doc.text(branding.name || 'Petcare', 14, 20);
@@ -40,19 +84,19 @@ const addHeader = async (doc: jsPDF, title: string, branding: BrandingInfo) => {
   } catch (e) {
     console.warn('Logo loading failed', e);
     doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(fontName, 'bold');
     doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
     // REBRANDING: Alterado fallback de PIQUET para Petcare
     doc.text(branding.name || 'Petcare', 14, 20);
   }
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(fontName, 'bold');
   doc.setFontSize(20);
   doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
   doc.text(title, 195, 20, { align: 'right' });
   
   doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(fontName, 'normal');
   doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
   doc.text(branding.name || 'Sistema Veterinário', 195, 25, { align: 'right' });
   
@@ -61,12 +105,12 @@ const addHeader = async (doc: jsPDF, title: string, branding: BrandingInfo) => {
   doc.line(14, 32, 196, 32);
 };
 
-const addFooter = (doc: jsPDF, branding: BrandingInfo, pageNumber: number, totalPages: number | null = null) => {
+const addFooter = (doc: jsPDF, branding: BrandingInfo, pageNumber: number, totalPages: number | null = null, fontName: string = PDF_FONT_FALLBACK) => {
     const pageHeight = doc.internal.pageSize.height;
     const pageWidth = doc.internal.pageSize.width;
     doc.setFontSize(9);
     doc.setTextColor(130);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(fontName, 'normal');
     doc.setDrawColor(200);
     doc.line(14, pageHeight - 15, pageWidth - 14, pageHeight - 15);
     
@@ -80,7 +124,7 @@ const addFooter = (doc: jsPDF, branding: BrandingInfo, pageNumber: number, total
     }
 };
 
-const renderHtmlToPdf = (doc: jsPDF, html: string, startX: number, startY: number, maxWidth: number) => {
+const renderHtmlToPdf = (doc: jsPDF, html: string, startX: number, startY: number, maxWidth: number, fontName: string = PDF_FONT_FALLBACK) => {
   let text = html
     .replace(/<div>/g, '\n')
     .replace(/<\/div>/g, '')
@@ -91,7 +135,7 @@ const renderHtmlToPdf = (doc: jsPDF, html: string, startX: number, startY: numbe
 
   const tokens = text.split(/(<\/?(?:b|strong|i|em|u)>)/g);
   doc.setFontSize(10);
-  doc.setFont('times', 'normal');
+  doc.setFont(fontName, 'normal');
   doc.setTextColor(0, 0, 0);
   
   let cursorX = startX;
@@ -103,10 +147,15 @@ const renderHtmlToPdf = (doc: jsPDF, html: string, startX: number, startY: numbe
   let isItalic = false;
 
   const setFont = () => {
-    if (isBold && isItalic) doc.setFont('times', 'bolditalic');
-    else if (isBold) doc.setFont('times', 'bold');
-    else if (isItalic) doc.setFont('times', 'italic');
-    else doc.setFont('times', 'normal');
+    if (fontName === PDF_FONT_INTER) {
+      if (isBold) doc.setFont(fontName, 'bold');
+      else doc.setFont(fontName, 'normal');
+      return;
+    }
+    if (isBold && isItalic) doc.setFont(fontName, 'bolditalic');
+    else if (isBold) doc.setFont(fontName, 'bold');
+    else if (isItalic) doc.setFont(fontName, 'italic');
+    else doc.setFont(fontName, 'normal');
   };
   setFont();
 
@@ -165,13 +214,15 @@ export const generatePDFReport = async (
   });
 
   const doc = new jsPDF();
+  const pdfFont = await registerInterFonts(doc);
   const canViewFinancials = user.level === 1 || user.level === 2 || user.permissions?.view_financials;
-  await addHeader(doc, 'Relatório de Exames', branding);
+  await addHeader(doc, 'Relatório de Exames', branding, pdfFont);
   const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
   
   const periodStart = format(parseISO(startDate), "dd/MM/yyyy");
   const periodEnd = format(parseISO(endDate), "dd/MM/yyyy");
   
+  doc.setFont(pdfFont, 'normal');
   doc.setFontSize(10);
   doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
   doc.text(`Gerado por: ${user.name}`, 14, 42);
@@ -196,47 +247,47 @@ export const generatePDFReport = async (
   doc.setFillColor(COLORS.lightBg[0], COLORS.lightBg[1], COLORS.lightBg[2]);
   doc.roundedRect(14, startY, 182, boxHeight, 3, 3, 'F');
   doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(pdfFont, 'bold');
   doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
   doc.text('Resumo Financeiro Geral', 18, startY + 8);
   
   doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(pdfFont, 'normal');
   doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
   doc.text('Qtd. Exames:', 18, startY + 18);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(pdfFont, 'bold');
   doc.text(totalExams.toString(), 44, startY + 18);
   
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(pdfFont, 'normal');
   doc.text('Valor Total:', 75, startY + 18);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(pdfFont, 'bold');
   doc.text(formatMoney(totalValue), 95, startY + 18);
 
   if (canViewFinancials) {
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(pdfFont, 'normal');
     doc.text('ISS (5%):', 140, startY + 18);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(pdfFont, 'bold');
     doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
     doc.text(formatMoney(totalISS), 158, startY + 18);
     
     const row2Y = startY + 28;
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(pdfFont, 'normal');
     doc.text('R. Profissional:', 18, row2Y);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(pdfFont, 'bold');
     doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
     doc.text(formatMoney(totalRepasseAndre), 44, row2Y);
     
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(pdfFont, 'normal');
     doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
     doc.text('R. Clínica:', 75, row2Y);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(pdfFont, 'bold');
     doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
     doc.text(formatMoney(totalRepasseUnivet), 95, row2Y);
   }
 
   if (reportExams.length === 0) {
     doc.setFontSize(12);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(pdfFont, 'normal');
     doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
     doc.text('Nenhum exame encontrado no período selecionado.', 14, startY + boxHeight + 20);
     window.open(URL.createObjectURL(doc.output('blob')), '_blank');
@@ -277,7 +328,7 @@ export const generatePDFReport = async (
         currentY = 20;
       }
       doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(pdfFont, 'bold');
       doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
       doc.text(group.title, 14, currentY);
       currentY += 4;
@@ -343,8 +394,8 @@ export const generatePDFReport = async (
       theme: 'grid',
       tableWidth: 182,
       styles: {
-        font: 'times',
-        fontSize: 9,
+        font: pdfFont,
+        fontSize: PDF_TABLE_BODY_PT,
         cellPadding: 2.5,
         textColor: COLORS.text,
         lineColor: [220, 220, 220],
@@ -355,28 +406,28 @@ export const generatePDFReport = async (
       headStyles: {
         fillColor: [COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]],
         textColor: 255,
-        font: 'helvetica',
-        fontSize: 10,
+        font: pdfFont,
+        fontSize: PDF_TABLE_HEAD_PT,
         fontStyle: 'bold',
         halign: 'center',
         valign: 'middle',
         cellPadding: 3
       },
       bodyStyles: {
-        font: 'times',
-        fontSize: 9
+        font: pdfFont,
+        fontSize: PDF_TABLE_BODY_PT
       },
       columnStyles: canViewFinancials ? columnStylesFinancial : columnStylesNoFinancial,
       alternateRowStyles: { fillColor: [249, 250, 251] },
       footStyles: {
         fillColor: [COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]],
         textColor: 255,
-        font: 'helvetica',
-        fontSize: 9,
+        font: pdfFont,
+        fontSize: PDF_TABLE_FOOT_PT,
         fontStyle: 'bold',
         halign: 'right',
         valign: 'middle',
-        cellPadding: 2.5
+        cellPadding: 2
       },
       didParseCell: (data) => {
         if (data.section === 'foot' && data.column.index === 0) {
@@ -391,7 +442,7 @@ export const generatePDFReport = async (
   const pageCount = (doc as any).internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
-    addFooter(doc, branding, i, pageCount);
+    addFooter(doc, branding, i, pageCount, pdfFont);
   }
   window.open(URL.createObjectURL(doc.output('blob')), '_blank');
 };
@@ -399,10 +450,11 @@ export const generatePDFReport = async (
 // Recibo
 export const generateReceipt = async (exam: Exam, user: User, branding: BrandingInfo) => {
   const doc = new jsPDF();
-  await addHeader(doc, 'RECIBO DE SERVIÇO', branding);
+  const pdfFont = await registerInterFonts(doc);
+  await addHeader(doc, 'RECIBO DE SERVIÇO', branding, pdfFont);
   doc.setFontSize(9);
   doc.setTextColor(100);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(pdfFont, 'normal');
   const addressLine = `${branding.address || ''} | Tel: ${branding.phone || ''}`;
   doc.text(addressLine, 105, 38, { align: 'center' });
   doc.setFontSize(8);
@@ -432,36 +484,36 @@ export const generateReceipt = async (exam: Exam, user: User, branding: Branding
   doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
 
   let currentY = startY + 15;
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(pdfFont, 'normal');
   doc.text('Data do Exame:', leftCol, currentY);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(pdfFont, 'bold');
   doc.text(format(parseISO(exam.date), "dd/MM/yyyy"), leftCol + 35, currentY);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(pdfFont, 'normal');
   doc.text('Paciente (PET):', rightCol, currentY);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(pdfFont, 'bold');
   doc.text(exam.petName, rightCol + 35, currentY);
   
   if (exam.species) {
     currentY += lineHeight;
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(pdfFont, 'normal');
     doc.text('Espécie:', rightCol, currentY);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(pdfFont, 'bold');
     doc.text(exam.species, rightCol + 35, currentY);
   }
 
   currentY += lineHeight;
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(pdfFont, 'normal');
   doc.text('Modalidade:', leftCol, currentY);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(pdfFont, 'bold');
   let modalityLabel = getModalityLabel(exam.modality);
   if (exam.studies && exam.studies > 1) modalityLabel += ` (${exam.studies} estudos)`;
   doc.text(modalityLabel, leftCol + 35, currentY);
 
   if (exam.studyDescription) {
     currentY += lineHeight;
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(pdfFont, 'normal');
     doc.text('Descrição:', leftCol, currentY);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(pdfFont, 'bold');
     doc.text(descLines, leftCol + 35, currentY);
   }
 
@@ -470,7 +522,7 @@ export const generateReceipt = async (exam: Exam, user: User, branding: Branding
   doc.setLineWidth(0.5);
   doc.roundedRect(40, valueBoxY, 130, 35, 2, 2, 'S');
   doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(pdfFont, 'bold');
   doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
   doc.text('VALOR TOTAL', 105, valueBoxY + 10, { align: 'center' });
   doc.setFontSize(22);
@@ -478,7 +530,7 @@ export const generateReceipt = async (exam: Exam, user: User, branding: Branding
   doc.text(formatMoney(exam.totalValue), 105, valueBoxY + 22, { align: 'center' });
   const issValue = exam.totalValue * 0.05;
   doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(pdfFont, 'normal');
   doc.setTextColor(120);
   doc.text(`Imposto a recolher (ISS 5%): ${formatMoney(issValue)}`, 105, valueBoxY + 45, { align: 'center' });
   doc.setFontSize(8);
@@ -500,6 +552,7 @@ export const generateExamReport = async (
   studyId?: string
 ) => {
   const doc = new jsPDF();
+  const pdfFont = await registerInterFonts(doc);
   
   let content = exam.reportContent;
   let images = exam.reportImages;
@@ -514,7 +567,7 @@ export const generateExamReport = async (
     }
   }
 
-  await addHeader(doc, 'LAUDO MÉDICO', branding);
+  await addHeader(doc, 'LAUDO MÉDICO', branding, pdfFont);
 
   const boxTop = 38;
   const boxHeight = 35; 
@@ -531,27 +584,27 @@ export const generateExamReport = async (
   
   let currentY = boxTop + 7;
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(pdfFont, 'bold');
   doc.text('Paciente:', labelX1, currentY);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(pdfFont, 'normal');
   doc.text(exam.petName || 'Não informado', valueX1, currentY);
 
   currentY += 6;
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(pdfFont, 'bold');
   doc.text('Espécie:', labelX1, currentY);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(pdfFont, 'normal');
   doc.text(exam.species || '-', valueX1, currentY);
 
   currentY += 6;
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(pdfFont, 'bold');
   doc.text('ID Exame:', labelX1, currentY);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(pdfFont, 'normal');
   doc.text(exam.id.slice(0, 8).toUpperCase(), valueX1, currentY);
 
   currentY += 6;
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(pdfFont, 'bold');
   doc.text('Exame:', labelX1, currentY);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(pdfFont, 'normal');
   let modalityLabel = getModalityLabel(exam.modality);
   if (titleSuffix) modalityLabel += titleSuffix;
   else if (exam.studyDescription) modalityLabel += ` - ${exam.studyDescription}`;
@@ -563,23 +616,23 @@ export const generateExamReport = async (
   
   currentY = boxTop + 7; 
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(pdfFont, 'bold');
   doc.text('Data:', labelX2, currentY);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(pdfFont, 'normal');
   doc.text(format(parseISO(exam.date), "dd/MM/yyyy"), valueX2, currentY);
 
   currentY += 6;
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(pdfFont, 'bold');
   doc.text('Solicitante:', labelX2, currentY);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(pdfFont, 'normal');
   let reqText = exam.requesterVet || 'Não informado';
   if (exam.requesterCrmv) reqText += ` (${exam.requesterCrmv})`;
   doc.text(reqText, valueX2, currentY);
 
   currentY += 6;
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(pdfFont, 'bold');
   doc.text('Responsável:', labelX2, currentY);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(pdfFont, 'normal');
   
   let respName = responsibleVet?.name;
   let respDoc = responsibleVet?.crmv;
@@ -600,20 +653,20 @@ export const generateExamReport = async (
 
   if (branding.name !== respName) {
     currentY += 6;
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(pdfFont, 'bold');
     doc.text('Local:', labelX2, currentY);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(pdfFont, 'normal');
     doc.text(branding.name, valueX2, currentY);
   }
 
   const contentStartY = boxTop + boxHeight + 15;
 
   doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(pdfFont, 'bold');
   doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
   doc.text('RESULTADO DO EXAME', 14, contentStartY);
 
-  renderHtmlToPdf(doc, content || '<p>Laudo sem conteúdo textual.</p>', 14, contentStartY + 10, 180);
+  renderHtmlToPdf(doc, content || '<p>Laudo sem conteúdo textual.</p>', 14, contentStartY + 10, 180, pdfFont);
 
   const pageHeight = doc.internal.pageSize.height;
   const signatureY = pageHeight - 40;
@@ -669,13 +722,13 @@ export const generateExamReport = async (
   doc.line(70, signatureY, 140, signatureY); 
   
   doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(pdfFont, 'bold');
   doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
   
   doc.text(respName || '', 105, signatureY + 5, { align: 'center' });
   
   doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(pdfFont, 'normal');
   if (respDoc) {
     doc.text(`CRMV: ${respDoc}`, 105, signatureY + 10, { align: 'center' });
   }
@@ -686,6 +739,7 @@ export const generateExamReport = async (
     for (let i = 0; i < images.length; i++) {
       if (i % imagesPerPage === 0) {
         doc.addPage();
+        doc.setFont(pdfFont, 'normal');
         doc.setFontSize(10);
         doc.setTextColor(150);
         doc.text(`Anexos - ${exam.petName} - ${format(parseISO(exam.date), "dd/MM/yyyy")}`, 105, 10, { align: 'center' });
@@ -743,7 +797,7 @@ export const generateExamReport = async (
   const pageCount = (doc as any).internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
-    addFooter(doc, branding, i, pageCount);
+    addFooter(doc, branding, i, pageCount, pdfFont);
   }
 
   window.open(URL.createObjectURL(doc.output('blob')), '_blank');
