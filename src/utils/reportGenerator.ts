@@ -248,7 +248,7 @@ export const generatePDFReport = async (
   const totalISS = totalValue * 0.05;
 
   const startY = 60;
-  const boxHeight = canViewFinancials ? 35 : 25;
+  const boxHeight = canViewFinancials ? 30 : 20;
   
   // Caixa de Resumo Financeiro Geral
   doc.setFillColor(COLORS.lightBg[0], COLORS.lightBg[1], COLORS.lightBg[2]);
