@@ -21,6 +21,9 @@ import ReactECharts from 'echarts-for-react';
 
 const getTodayString = () => new Date().toISOString().split('T')[0];
 
+/** Itens por página na aba Exames Registrados (lista carregada inteira; paginação só na UI). */
+const EXAM_LIST_PAGE_SIZE = 20;
+
 /** Mensagem legível para falhas do PostgREST / Supabase (inclui NOT NULL em clinic_id). */
 const formatExamSaveError = (err: unknown): string => {
   const o = err && typeof err === 'object' ? (err as Record<string, unknown>) : null;
@@ -528,6 +531,7 @@ export const OperationalDashboard = () => {
   const [filterPet, setFilterPet] = useState('');
   /** Ordenação da lista de exames por data (mais recente = padrão, alinhado ao carregamento atual). */
   const [examListDateOrder, setExamListDateOrder] = useState<'desc' | 'asc'>('desc');
+  const [examListPage, setExamListPage] = useState(1);
   
   const canViewFinancials = user?.permissions?.view_financials && !isPartnerView;
   /** Veterinário assinante independente precisa da aba de preços para cumprir a regra do 1º exame. */
@@ -1113,6 +1117,21 @@ export const OperationalDashboard = () => {
     });
   }, [exams, filterPet, examListDateOrder]);
 
+  const examListTotalPages = Math.max(1, Math.ceil(filteredExamsForList.length / EXAM_LIST_PAGE_SIZE));
+
+  useEffect(() => {
+    setExamListPage(1);
+  }, [filterPet, examListDateOrder]);
+
+  useEffect(() => {
+    setExamListPage((p) => Math.min(p, examListTotalPages));
+  }, [examListTotalPages]);
+
+  const paginatedExamsForList = useMemo(() => {
+    const start = (examListPage - 1) * EXAM_LIST_PAGE_SIZE;
+    return filteredExamsForList.slice(start, start + EXAM_LIST_PAGE_SIZE);
+  }, [filteredExamsForList, examListPage]);
+
   const listStats = useMemo(() => {
     return filteredExamsForList.reduce((acc, exam) => ({
       totalArrecadado: acc.totalArrecadado + exam.totalValue,
@@ -1417,7 +1436,7 @@ export const OperationalDashboard = () => {
                       </td>
                     </tr>
                   ) : (
-                    filteredExamsForList
+                    paginatedExamsForList
                       .map(exam => {
                         const isMyExam = loggedUserEntity?.type === 'vet' && loggedUserEntity.id === exam.veterinarianId;
                         const canEditThisReport = canEditReports && (isMyExam || user?.level === 1);
@@ -1522,6 +1541,45 @@ export const OperationalDashboard = () => {
                 </tbody>
               </table>
             </div>
+
+            {filteredExamsForList.length > 0 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4 pt-4 border-t border-gray-100 text-sm text-gray-600">
+                <p>
+                  Mostrando{' '}
+                  <span className="font-medium text-gray-800">
+                    {(examListPage - 1) * EXAM_LIST_PAGE_SIZE + 1}
+                  </span>
+                  –
+                  <span className="font-medium text-gray-800">
+                    {Math.min(examListPage * EXAM_LIST_PAGE_SIZE, filteredExamsForList.length)}
+                  </span>{' '}
+                  de <span className="font-medium text-gray-800">{filteredExamsForList.length}</span>
+                </p>
+                {examListTotalPages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setExamListPage((p) => Math.max(1, p - 1))}
+                      disabled={examListPage <= 1}
+                      className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Anterior
+                    </button>
+                    <span className="text-gray-500 tabular-nums px-1">
+                      Página {examListPage} / {examListTotalPages}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setExamListPage((p) => Math.min(examListTotalPages, p + 1))}
+                      disabled={examListPage >= examListTotalPages}
+                      className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Próxima
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
