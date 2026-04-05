@@ -19,6 +19,27 @@ import { supabase } from '../lib/supabase';
 import ReactECharts from 'echarts-for-react';
 
 const getTodayString = () => new Date().toISOString().split('T')[0];
+
+/** Mensagem legível para falhas do PostgREST / Supabase (inclui NOT NULL em clinic_id). */
+const formatExamSaveError = (err: unknown): string => {
+  const o = err && typeof err === 'object' ? (err as Record<string, unknown>) : null;
+  const msg = typeof o?.message === 'string' ? o.message : err instanceof Error ? err.message : '';
+  const code = typeof o?.code === 'string' ? o.code : '';
+  if (code === '23502' && msg.includes('clinic_id')) {
+    return (
+      'Não foi possível salvar: o banco de dados ainda exige uma clínica neste exame (clinic_id obrigatório).\n\n' +
+      'Solução: no Supabase, em SQL Editor, execute a migração que permite clínica opcional, por exemplo:\n' +
+      'ALTER TABLE public.exams ALTER COLUMN clinic_id DROP NOT NULL;\n\n' +
+      '(Erro original: ' + msg + ')'
+    );
+  }
+  if (msg) return msg;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return 'Erro ao salvar o exame. Verifique os dados e tente novamente.';
+  }
+};
 const SPECIES_OPTIONS = ['Cachorro', 'Gato', 'Outros'];
 
 const TABS = [
@@ -67,6 +88,7 @@ export const OperationalDashboard = () => {
   
   const [editingExamId, setEditingExamId] = useState<string | null>(null);
   const [isSavingExam, setIsSavingExam] = useState(false);
+  const [examSaveError, setExamSaveError] = useState<string | null>(null);
   const [formData, setFormData] = useState({ 
     date: getTodayString(), 
     petName: '', 
@@ -700,6 +722,7 @@ export const OperationalDashboard = () => {
 
   const handleSaveExam = async (e: React.FormEvent) => {
     e.preventDefault();
+    setExamSaveError(null);
 
     if (!editingExamId && isIndependentVetSubscriber && !vetHasAtLeastOnePricedRule) {
       alert('Antes de cadastrar um exame, é necessário definir o preço de pelo menos um tipo de exame.');
@@ -753,9 +776,12 @@ export const OperationalDashboard = () => {
       resetForm();
       setActiveTab('list');
       setEditingExamId(null);
-    } catch (error: any) {
-      console.error("Erro ao salvar exame:", error);
-      alert("Erro ao salvar exame: " + (error.message || "Verifique os dados."));
+      setExamSaveError(null);
+    } catch (error: unknown) {
+      const userMsg = formatExamSaveError(error);
+      console.error('Erro ao salvar exame:', error);
+      setExamSaveError(userMsg);
+      window.alert(userMsg);
     } finally {
       setIsSavingExam(false);
     }
@@ -1456,6 +1482,26 @@ export const OperationalDashboard = () => {
               <PlusCircle className="w-6 h-6 text-petcare-DEFAULT" />
               {editingExamId ? 'Editar Exame' : 'Novo Exame'}
             </h2>
+
+            {examSaveError && (
+              <div
+                role="alert"
+                className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3 animate-fade-in"
+              >
+                <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-bold text-red-800 text-sm">Erro ao salvar o exame</h3>
+                  <p className="text-sm text-red-900 mt-2 whitespace-pre-wrap break-words">{examSaveError}</p>
+                  <button
+                    type="button"
+                    onClick={() => setExamSaveError(null)}
+                    className="mt-3 text-xs font-semibold text-red-700 hover:text-red-900 underline"
+                  >
+                    Dispensar
+                  </button>
+                </div>
+              </div>
+            )}
 
             {loggedUserEntity?.type === 'clinic' && availableVeterinarians.length === 0 && (
               <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3 animate-fade-in">
