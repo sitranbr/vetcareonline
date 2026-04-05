@@ -256,7 +256,7 @@ export const generatePDFReport = async (
   doc.setFontSize(PDF_REPORT_SUMMARY_TITLE_PT);
   doc.setFont(pdfFont, 'bold');
   doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
-  doc.text('Resumo Financeiro Geral', 18, startY + 8);
+  doc.text('Resumo Financeiro Geral', 18, startY + 5);
   
   doc.setFontSize(PDF_REPORT_SUMMARY_BODY_PT);
   doc.setFont(pdfFont, 'normal');
