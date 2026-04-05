@@ -2,7 +2,8 @@ import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { AdminTenants } from './AdminTenants';
 import { OperationalDashboard } from './OperationalDashboard';
-import { Shield } from 'lucide-react';
+
+// O item "Minha Equipe" no cabeçalho (Layout) segue canManageTeamAccess em lib/teamPermissions.ts
 
 // Dashboard Wrapper que decide o que mostrar
 export const Dashboard = () => {

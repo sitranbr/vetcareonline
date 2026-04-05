@@ -6,6 +6,7 @@ import { LogOut, LayoutDashboard, Users, Settings as SettingsIcon, Shield, Alert
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { clsx } from 'clsx';
+import { canManageTeamAccess } from '../lib/teamPermissions';
 
 export const Layout = () => {
   const { user, logout, profileError } = useAuth();
@@ -21,12 +22,7 @@ export const Layout = () => {
   const currentMonth = format(new Date(), 'MMMM/yyyy', { locale: ptBR });
   const isAdmin = user?.level === 1;
 
-  // Verifica se o usuário pode visualizar a página de equipe
-  const canViewTeam = () => {
-    if (isAdmin) return true;
-    // Verifica se tem a permissão principal ou a subpermissão de visualização
-    return user?.permissions?.manage_users || user?.permissions?.visualizar_equipe;
-  };
+  const showTeamNav = canManageTeamAccess(user);
 
   // Lógica White Label: Usa o nome/logo da clínica se configurado, senão usa Petcare
   const systemDisplayName = settings.name && settings.name !== 'Petcare' ? settings.name : null;
@@ -94,7 +90,7 @@ export const Layout = () => {
                   {isAdmin ? 'Gestão SaaS' : 'Dashboard'}
                 </Link>
                 
-                {canViewTeam() && (
+                {showTeamNav && (
                   <Link 
                     to="/users" 
                     className={clsx(
@@ -166,7 +162,7 @@ export const Layout = () => {
             <span className="text-[10px] font-bold mt-1">{isAdmin ? 'SaaS' : 'Dash'}</span>
           </Link>
           
-          {canViewTeam() && (
+          {showTeamNav && (
             <Link 
               to="/users" 
               className={clsx(

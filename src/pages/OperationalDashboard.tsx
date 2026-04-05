@@ -16,6 +16,7 @@ import {
 import { clsx } from 'clsx';
 import { startOfMonth, endOfMonth, format, parseISO } from 'date-fns';
 import { supabase } from '../lib/supabase';
+import { canManageTeamAccess } from '../lib/teamPermissions';
 import ReactECharts from 'echarts-for-react';
 
 const getTodayString = () => new Date().toISOString().split('T')[0];
@@ -1509,12 +1510,13 @@ export const OperationalDashboard = () => {
                 <div>
                   <h3 className="font-bold text-amber-800 text-sm">Nenhum veterinário encontrado</h3>
                   <p className="text-sm text-amber-700 mt-1">
-                    {(user?.level === 1 || user?.permissions?.manage_users || user?.permissions?.visualizar_equipe)
+                    {canManageTeamAccess(user)
                       ? 'Você precisa cadastrar sua equipe ou vincular veterinários parceiros antes de lançar exames.'
                       : 'Solicite ao administrador da clínica que cadastre veterinários ou vincule parceiros antes de lançar exames.'}
                   </p>
-                  {(user?.level === 1 || user?.permissions?.manage_users || user?.permissions?.visualizar_equipe) && (
+                  {canManageTeamAccess(user) && (
                     <button 
+                      type="button"
                       onClick={() => navigate('/users')}
                       className="mt-2 text-xs font-bold bg-amber-100 text-amber-800 px-3 py-1.5 rounded-lg hover:bg-amber-200 transition-colors flex items-center gap-1"
                     >
