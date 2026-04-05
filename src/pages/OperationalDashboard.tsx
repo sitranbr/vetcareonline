@@ -24,6 +24,8 @@ const getTodayString = () => new Date().toISOString().split('T')[0];
 /** Itens por página na aba Exames Registrados (lista carregada inteira; paginação só na UI). */
 const EXAM_LIST_PAGE_SIZE = 20;
 
+const EXAM_LIST_PERIOD_OPTIONS: Period[] = ['comercial', 'noturno', 'fds', 'feriado'];
+
 /** Mensagem legível para falhas do PostgREST / Supabase (inclui NOT NULL em clinic_id). */
 const formatExamSaveError = (err: unknown): string => {
   const o = err && typeof err === 'object' ? (err as Record<string, unknown>) : null;
@@ -531,6 +533,8 @@ export const OperationalDashboard = () => {
   const [filterPet, setFilterPet] = useState('');
   /** Ordenação da lista de exames por data (mais recente = padrão, alinhado ao carregamento atual). */
   const [examListDateOrder, setExamListDateOrder] = useState<'desc' | 'asc'>('desc');
+  /** Filtro por período de cobrança do exame; vazio = todos. */
+  const [examListPeriodFilter, setExamListPeriodFilter] = useState<'' | Period>('');
   const [examListPage, setExamListPage] = useState(1);
   
   const canViewFinancials = user?.permissions?.view_financials && !isPartnerView;
@@ -1109,19 +1113,23 @@ export const OperationalDashboard = () => {
   }, [filteredExamsForReport]);
 
   const filteredExamsForList = useMemo(() => {
-    const filtered = exams.filter(e => e.petName.toLowerCase().includes(filterPet.toLowerCase()));
+    const filtered = exams.filter(e => {
+      const petOk = e.petName.toLowerCase().includes(filterPet.toLowerCase());
+      const periodOk = !examListPeriodFilter || e.period === examListPeriodFilter;
+      return petOk && periodOk;
+    });
     return [...filtered].sort((a, b) => {
       const ta = parseISO(a.date).getTime();
       const tb = parseISO(b.date).getTime();
       return examListDateOrder === 'desc' ? tb - ta : ta - tb;
     });
-  }, [exams, filterPet, examListDateOrder]);
+  }, [exams, filterPet, examListDateOrder, examListPeriodFilter]);
 
   const examListTotalPages = Math.max(1, Math.ceil(filteredExamsForList.length / EXAM_LIST_PAGE_SIZE));
 
   useEffect(() => {
     setExamListPage(1);
-  }, [filterPet, examListDateOrder]);
+  }, [filterPet, examListDateOrder, examListPeriodFilter]);
 
   useEffect(() => {
     setExamListPage((p) => Math.min(p, examListTotalPages));
@@ -1401,15 +1409,35 @@ export const OperationalDashboard = () => {
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <Calendar className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden />
-                  <label htmlFor="exam-list-date-order" className="sr-only">Ordenar exames por data</label>
+                  <label htmlFor="exam-list-sort-period" className="sr-only">
+                    Ordenar por data e filtrar por período do exame
+                  </label>
                   <select
-                    id="exam-list-date-order"
-                    value={examListDateOrder}
-                    onChange={e => setExamListDateOrder(e.target.value as 'desc' | 'asc')}
-                    className="w-full sm:w-auto min-w-[200px] pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-petcare-light/50 outline-none cursor-pointer"
+                    id="exam-list-sort-period"
+                    value={`${examListDateOrder}|${examListPeriodFilter || 'all'}`}
+                    onChange={(e) => {
+                      const [ord, per] = e.target.value.split('|');
+                      setExamListDateOrder(ord as 'desc' | 'asc');
+                      setExamListPeriodFilter(per === 'all' ? '' : (per as Period));
+                    }}
+                    className="w-full sm:w-auto min-w-[220px] max-w-[min(100vw-2rem,320px)] pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-petcare-light/50 outline-none cursor-pointer"
                   >
-                    <option value="desc">Data: mais recentes primeiro</option>
-                    <option value="asc">Data: mais antigos primeiro</option>
+                    <optgroup label="Data: mais recentes primeiro">
+                      <option value="desc|all">Todos os períodos</option>
+                      {EXAM_LIST_PERIOD_OPTIONS.map((p) => (
+                        <option key={`desc-${p}`} value={`desc|${p}`}>
+                          Período: {getPeriodLabel(p)}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Data: mais antigos primeiro">
+                      <option value="asc|all">Todos os períodos</option>
+                      {EXAM_LIST_PERIOD_OPTIONS.map((p) => (
+                        <option key={`asc-${p}`} value={`asc|${p}`}>
+                          Período: {getPeriodLabel(p)}
+                        </option>
+                      ))}
+                    </optgroup>
                   </select>
                 </div>
               </div>
