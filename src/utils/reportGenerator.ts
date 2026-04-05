@@ -429,7 +429,7 @@ export const generatePDFReport = async (
       alternateRowStyles: { fillColor: [249, 250, 251] },
       footStyles: {
         fillColor: [COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]],
-        textColor: 255,
+        textColor: [COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]] as [number, number, number],
         font: pdfFont,
         fontSize: PDF_TABLE_FOOT_PT,
         fontStyle: 'bold',
@@ -438,8 +438,16 @@ export const generatePDFReport = async (
         cellPadding: 1.5
       },
       didParseCell: (data) => {
-        if (data.section === 'foot' && data.column.index === 0) {
+        if (data.section !== 'foot') return;
+        if (data.column.index === 0) {
           data.cell.styles.halign = 'left';
+        }
+        if (canViewFinancials && data.column.index === 7) {
+          data.cell.styles.textColor = [
+            COLORS.primary[0],
+            COLORS.primary[1],
+            COLORS.primary[2]
+          ] as [number, number, number];
         }
       }
     });
