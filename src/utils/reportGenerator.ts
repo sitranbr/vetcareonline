@@ -18,10 +18,10 @@ const COLORS = {
 const PDF_FONT_FALLBACK = 'helvetica';
 const PDF_FONT_INTER = 'Inter';
 
-const PDF_TABLE_BODY_PT = 6;
-const PDF_TABLE_HEAD_PT = 7;
+const PDF_TABLE_BODY_PT = 7;
+const PDF_TABLE_HEAD_PT = 7.5;
 /** Linha SUBTOTAL / totais: menor para evitar quebra em células estreitas. */
-const PDF_TABLE_FOOT_PT = 6;
+const PDF_TABLE_FOOT_PT = 6.5;
 
 /** Textos fora da tabela no relatório financeiro. */
 const PDF_REPORT_META_PT = 8;
@@ -296,7 +296,7 @@ export const generatePDFReport = async (
     doc.setFontSize(10);
     doc.setFont(pdfFont, 'normal');
     doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
-    doc.text('Nenhum exame encontrado no período selecionado.', 14, startY + boxHeight + 10);
+    doc.text('Nenhum exame encontrado no período selecionado.', 14, startY + boxHeight + 20);
     window.open(URL.createObjectURL(doc.output('blob')), '_blank');
     return;
   }
