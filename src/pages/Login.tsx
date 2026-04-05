@@ -55,6 +55,8 @@ export const Login = () => {
           setError('E-mail não confirmado. Contate o administrador.');
         } else if (error.message.includes('Invalid login credentials')) {
           setError('Usuário ou senha incorretos.');
+        } else if (error.message.includes('suspensa') || error.message.includes('organização foi suspenso')) {
+          setError(error.message);
         } else if (error.message.includes('Failed to fetch')) {
           setError('Erro de conexão. Verifique sua internet.');
         } else {

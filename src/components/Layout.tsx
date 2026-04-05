@@ -85,7 +85,7 @@ export const Layout = () => {
                   to="/" 
                   className={clsx(
                     "px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center",
-                    location.pathname === '/' || location.pathname === '/tenants/new'
+                    location.pathname === '/' || location.pathname === '/tenants/new' || location.pathname.startsWith('/tenants/')
                       ? "bg-petcare-bg text-petcare-dark" 
                       : "text-gray-500 hover:text-petcare-DEFAULT hover:bg-gray-50"
                   )}
@@ -159,7 +159,7 @@ export const Layout = () => {
             to="/" 
             className={clsx(
               "p-2 rounded-lg flex flex-col items-center",
-              location.pathname === '/' || location.pathname === '/tenants/new' ? "text-petcare-dark bg-petcare-bg" : "text-gray-400"
+              location.pathname === '/' || location.pathname === '/tenants/new' || location.pathname.startsWith('/tenants/') ? "text-petcare-dark bg-petcare-bg" : "text-gray-400"
             )}
           >
             {isAdmin ? <Shield className="w-5 h-5" /> : <LayoutDashboard className="w-5 h-5" />}

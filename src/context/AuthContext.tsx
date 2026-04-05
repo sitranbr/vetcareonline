@@ -27,6 +27,48 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/** Mensagem legível para falhas da RPC delete_user_completely (ex.: FK owner_id em clínicas com equipe). */
+const formatDeleteUserRpcError = (err: unknown): string => {
+  const o = err && typeof err === 'object' ? (err as Record<string, unknown>) : null;
+  const msg = typeof o?.message === 'string' ? o.message : '';
+  const code = typeof o?.code === 'string' ? o.code : '';
+  const details = typeof o?.details === 'string' ? o.details : '';
+  if (code === '23503' && (msg.includes('profiles_owner_id_fkey') || details.includes('owner_id'))) {
+    return (
+      'Não foi possível excluir: ainda há perfis vinculados a este assinante (equipe com owner_id). ' +
+      'Aplique no Supabase a migração que ajusta a função delete_user_completely, ou remova antes os usuários da equipe.'
+    );
+  }
+  if (msg) return msg;
+  if (details) return details;
+  return 'Erro ao excluir usuário.';
+};
+
+/** Suspensão administrativa: perfil bloqueado ou assinante (owner) bloqueado. */
+const getProfileAccessDeniedMessage = async (profile: {
+  id: string;
+  access_blocked?: boolean | null;
+  owner_id?: string | null;
+}): Promise<string | null> => {
+  if (profile.access_blocked) {
+    return 'Conta suspensa. Entre em contato com o suporte.';
+  }
+  if (profile.owner_id && profile.owner_id !== profile.id) {
+    const { data: owner } = await supabase
+      .from('profiles')
+      .select('access_blocked')
+      .eq('id', profile.owner_id)
+      .maybeSingle();
+    if (owner?.access_blocked) {
+      return 'O acesso da sua organização foi suspenso. Entre em contato com o suporte.';
+    }
+  }
+  return null;
+};
+
+const blockedAuthError = (message: string): AuthError =>
+  ({ name: 'AccessBlocked', message, status: 403 } as AuthError);
+
 const getDefaultPermissions = (level: number): UserPermissions => {
   switch (level) {
     case 1: // Admin
@@ -145,12 +187,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (isHydratingRef.current) return;
     isHydratingRef.current = true;
     try {
+      setProfileError(null);
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', sessionUser.id).maybeSingle();
       if (profile) {
+        const denied = await getProfileAccessDeniedMessage(profile);
+        if (denied) {
+          await supabase.auth.signOut();
+          setUser(null);
+          setCurrentTenant(null);
+          userIdRef.current = null;
+          setProfileError(denied);
+          return;
+        }
         const dbUser: User = {
           id: profile.id, email: profile.email, name: profile.name, username: profile.email, role: profile.role, level: profile.level, ownerId: profile.owner_id, partners: profile.partners || null,
           permissions: profile.permissions || getDefaultPermissions(profile.level),
-          signatureUrl: profile.signature_url
+          signatureUrl: profile.signature_url,
+          accessBlocked: !!profile.access_blocked
         };
         setUser(dbUser);
         await loadLinkedTenants(dbUser);
@@ -212,12 +265,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const refreshProfile = async () => {
     if (!user) return;
     try {
-      const { data: profile } = await supabase.from('profiles').select('id, name, email, role, level, owner_id, partners, permissions, signature_url').eq('id', user.id).maybeSingle();
+      const { data: profile } = await supabase.from('profiles').select('id, name, email, role, level, owner_id, partners, permissions, signature_url, access_blocked').eq('id', user.id).maybeSingle();
       if (profile) {
+        const denied = await getProfileAccessDeniedMessage(profile);
+        if (denied) {
+          await supabase.auth.signOut();
+          setUser(null);
+          setCurrentTenant(null);
+          userIdRef.current = null;
+          setProfileError(denied);
+          return;
+        }
         const dbUser: User = {
           id: profile.id, email: profile.email, name: profile.name, username: profile.email, role: profile.role, level: profile.level, ownerId: profile.owner_id, partners: profile.partners || null,
           permissions: profile.permissions || getDefaultPermissions(profile.level),
-          signatureUrl: profile.signature_url
+          signatureUrl: profile.signature_url,
+          accessBlocked: !!profile.access_blocked
         };
         setUser(dbUser);
         await loadLinkedTenants(dbUser);
@@ -259,7 +322,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (allProfiles) {
         setUsers(allProfiles.map(p => ({
-          id: p.id, name: p.name, email: p.email, username: p.email, role: p.role, level: p.level, ownerId: p.owner_id, partners: p.partners || null, permissions: p.permissions, signatureUrl: p.signature_url
+          id: p.id, name: p.name, email: p.email, username: p.email, role: p.role, level: p.level, ownerId: p.owner_id, partners: p.partners || null, permissions: p.permissions, signatureUrl: p.signature_url,
+          accessBlocked: !!p.access_blocked
         })));
       }
     }
@@ -271,12 +335,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { error };
     if (data.user) {
-        userIdRef.current = data.user.id;
-        const tempUser = createUserFromSession(data.user);
-        setUser(tempUser);
-        setProvisionalTenant(tempUser);
-        setIsLoading(false);
-        hydrateUserProfile(data.user);
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id, access_blocked, owner_id')
+        .eq('id', data.user.id)
+        .maybeSingle();
+      if (profile) {
+        const denied = await getProfileAccessDeniedMessage(profile);
+        if (denied) {
+          await supabase.auth.signOut();
+          setUser(null);
+          setCurrentTenant(null);
+          userIdRef.current = null;
+          return { error: blockedAuthError(denied) };
+        }
+      }
+      userIdRef.current = data.user.id;
+      const tempUser = createUserFromSession(data.user);
+      setUser(tempUser);
+      setProvisionalTenant(tempUser);
+      setIsLoading(false);
+      setProfileError(null);
+      hydrateUserProfile(data.user);
     }
     return { error: null };
   };
@@ -330,8 +410,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateUser = async (id: string, data: Partial<User>) => {
-    const { error } = await supabase.from('profiles').update({ name: data.name, email: data.email, level: data.level, role: data.role, permissions: data.permissions }).eq('id', id);
-    if (error) return { error: error.message };
+    if (data.accessBlocked !== undefined) {
+      if (user?.level !== 1) return { error: 'Sem permissão para alterar suspensão de acesso.' };
+      const { error: rpcErr } = await supabase.rpc('admin_set_profile_access_blocked', {
+        p_target: id,
+        p_blocked: data.accessBlocked
+      });
+      if (rpcErr) return { error: rpcErr.message };
+    }
+    const payload: Record<string, unknown> = {};
+    if (data.name !== undefined) payload.name = data.name;
+    if (data.email !== undefined) payload.email = data.email;
+    if (data.level !== undefined) payload.level = data.level;
+    if (data.role !== undefined) payload.role = data.role;
+    if (data.permissions !== undefined) payload.permissions = data.permissions;
+    if (Object.keys(payload).length > 0) {
+      const { error } = await supabase.from('profiles').update(payload).eq('id', id);
+      if (error) return { error: error.message };
+    }
     await refreshUsers();
     if (user?.id === id) setUser(prev => prev ? { ...prev, ...data } : null);
     return {};
@@ -371,15 +467,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const { error: rpcError } = await supabase.rpc('delete_user_completely', { target_user_id: id });
       
       if (rpcError) {
-        console.error("Erro ao excluir usuário (RPC):", rpcError);
-        return { success: false, error: rpcError.message || "Erro ao excluir usuário." };
+        const text = formatDeleteUserRpcError(rpcError);
+        console.error('Erro ao excluir usuário (RPC):', rpcError);
+        return { success: false, error: text };
       }
 
       await refreshUsers();
       return { success: true };
-    } catch (error: any) {
-      console.error("Erro ao excluir usuário:", error);
-      return { success: false, error: error.message || "Erro ao excluir usuário." };
+    } catch (error: unknown) {
+      console.error('Erro ao excluir usuário:', error);
+      return { success: false, error: formatDeleteUserRpcError(error) };
     }
   };
 

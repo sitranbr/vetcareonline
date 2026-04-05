@@ -78,6 +78,8 @@ export interface User {
   partners?: string[] | null; // IDs dos perfis parceiros (clínicas para vet, vets para clínica)
   permissions: UserPermissions;
   signatureUrl?: string; // URL da assinatura eletrônica
+  /** Suspensão pelo super admin: bloqueia login (coluna profiles.access_blocked) */
+  accessBlocked?: boolean;
 }
 
 // Interface para o Seletor de Contexto (Tenant)
