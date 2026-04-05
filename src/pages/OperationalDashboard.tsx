@@ -14,7 +14,7 @@ import {
   DollarSign, UserCheck, Building2, CreditCard, PlusCircle, List, BarChart3, Tag, Trash2, Search, Filter, Plus, Edit2, FileText, Calendar, X, Printer, Stethoscope, CheckCircle2, Eye, Save, ChevronDown, ChevronUp, AlertCircle, Loader2, Link as LinkIcon, Users, PenTool, Copy
 } from 'lucide-react';
 import { clsx } from 'clsx';
-import { startOfMonth, endOfMonth, format, parseISO } from 'date-fns';
+import { startOfMonth, endOfMonth, format, parseISO, isValid } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { canManageTeamAccess } from '../lib/teamPermissions';
 import ReactECharts from 'echarts-for-react';
@@ -23,8 +23,6 @@ const getTodayString = () => new Date().toISOString().split('T')[0];
 
 /** Itens por página na aba Exames Registrados (lista carregada inteira; paginação só na UI). */
 const EXAM_LIST_PAGE_SIZE = 20;
-
-const EXAM_LIST_PERIOD_OPTIONS: Period[] = ['comercial', 'noturno', 'fds', 'feriado'];
 
 /** Mensagem legível para falhas do PostgREST / Supabase (inclui NOT NULL em clinic_id). */
 const formatExamSaveError = (err: unknown): string => {
@@ -533,8 +531,9 @@ export const OperationalDashboard = () => {
   const [filterPet, setFilterPet] = useState('');
   /** Ordenação da lista de exames por data (mais recente = padrão, alinhado ao carregamento atual). */
   const [examListDateOrder, setExamListDateOrder] = useState<'desc' | 'asc'>('desc');
-  /** Filtro por período de cobrança do exame; vazio = todos. */
-  const [examListPeriodFilter, setExamListPeriodFilter] = useState<'' | Period>('');
+  /** Filtro por intervalo de datas do exame (campo date); vazio = sem limite naquele extremo. */
+  const [examListDateFrom, setExamListDateFrom] = useState('');
+  const [examListDateTo, setExamListDateTo] = useState('');
   const [examListPage, setExamListPage] = useState(1);
   
   const canViewFinancials = user?.permissions?.view_financials && !isPartnerView;
@@ -1113,23 +1112,33 @@ export const OperationalDashboard = () => {
   }, [filteredExamsForReport]);
 
   const filteredExamsForList = useMemo(() => {
+    let from = examListDateFrom;
+    let to = examListDateTo;
+    if (from && to && from > to) {
+      [from, to] = [to, from];
+    }
     const filtered = exams.filter(e => {
       const petOk = e.petName.toLowerCase().includes(filterPet.toLowerCase());
-      const periodOk = !examListPeriodFilter || e.period === examListPeriodFilter;
-      return petOk && periodOk;
+      if (!petOk) return false;
+      const parsed = parseISO(e.date);
+      if (!isValid(parsed)) return true;
+      const dayStr = format(parsed, 'yyyy-MM-dd');
+      if (from && dayStr < from) return false;
+      if (to && dayStr > to) return false;
+      return true;
     });
     return [...filtered].sort((a, b) => {
       const ta = parseISO(a.date).getTime();
       const tb = parseISO(b.date).getTime();
       return examListDateOrder === 'desc' ? tb - ta : ta - tb;
     });
-  }, [exams, filterPet, examListDateOrder, examListPeriodFilter]);
+  }, [exams, filterPet, examListDateOrder, examListDateFrom, examListDateTo]);
 
   const examListTotalPages = Math.max(1, Math.ceil(filteredExamsForList.length / EXAM_LIST_PAGE_SIZE));
 
   useEffect(() => {
     setExamListPage(1);
-  }, [filterPet, examListDateOrder, examListPeriodFilter]);
+  }, [filterPet, examListDateOrder, examListDateFrom, examListDateTo]);
 
   useEffect(() => {
     setExamListPage((p) => Math.min(p, examListTotalPages));
@@ -1396,49 +1405,54 @@ export const OperationalDashboard = () => {
                 <List className="w-5 h-5 text-petcare-DEFAULT" />
                 Exames Registrados
               </h2>
-              <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto md:items-center">
-                <div className="relative flex-1 md:w-64">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Buscar paciente..."
-                    value={filterPet}
-                    onChange={e => setFilterPet(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-petcare-light/50 outline-none"
-                  />
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Calendar className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden />
-                  <label htmlFor="exam-list-sort-period" className="sr-only">
-                    Ordenar por data e filtrar por período do exame
-                  </label>
-                  <select
-                    id="exam-list-sort-period"
-                    value={`${examListDateOrder}|${examListPeriodFilter || 'all'}`}
-                    onChange={(e) => {
-                      const [ord, per] = e.target.value.split('|');
-                      setExamListDateOrder(ord as 'desc' | 'asc');
-                      setExamListPeriodFilter(per === 'all' ? '' : (per as Period));
-                    }}
-                    className="w-full sm:w-auto min-w-[220px] max-w-[min(100vw-2rem,320px)] pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-petcare-light/50 outline-none cursor-pointer"
-                  >
-                    <optgroup label="Data: mais recentes primeiro">
-                      <option value="desc|all">Todos os períodos</option>
-                      {EXAM_LIST_PERIOD_OPTIONS.map((p) => (
-                        <option key={`desc-${p}`} value={`desc|${p}`}>
-                          Período: {getPeriodLabel(p)}
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Data: mais antigos primeiro">
-                      <option value="asc|all">Todos os períodos</option>
-                      {EXAM_LIST_PERIOD_OPTIONS.map((p) => (
-                        <option key={`asc-${p}`} value={`asc|${p}`}>
-                          Período: {getPeriodLabel(p)}
-                        </option>
-                      ))}
-                    </optgroup>
-                  </select>
+              <div className="flex flex-col gap-3 w-full md:w-auto md:items-end md:max-w-full">
+                <div className="flex flex-col sm:flex-row flex-wrap gap-2 w-full md:justify-end md:items-center">
+                  <div className="relative flex-1 min-w-[180px] md:w-64 md:max-w-xs">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Buscar paciente..."
+                      value={filterPet}
+                      onChange={e => setFilterPet(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-petcare-light/50 outline-none"
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <span className="text-xs font-medium text-gray-500 whitespace-nowrap hidden sm:inline">Período:</span>
+                    <div className="flex items-center gap-1.5">
+                      <label htmlFor="exam-list-date-from" className="text-xs text-gray-500 whitespace-nowrap">De</label>
+                      <input
+                        id="exam-list-date-from"
+                        type="date"
+                        value={examListDateFrom}
+                        onChange={(e) => setExamListDateFrom(e.target.value)}
+                        className="pl-2 pr-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-petcare-light/50 outline-none"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <label htmlFor="exam-list-date-to" className="text-xs text-gray-500 whitespace-nowrap">até</label>
+                      <input
+                        id="exam-list-date-to"
+                        type="date"
+                        value={examListDateTo}
+                        onChange={(e) => setExamListDateTo(e.target.value)}
+                        className="pl-2 pr-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-petcare-light/50 outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Calendar className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden />
+                    <label htmlFor="exam-list-date-order" className="sr-only">Ordenar exames por data</label>
+                    <select
+                      id="exam-list-date-order"
+                      value={examListDateOrder}
+                      onChange={e => setExamListDateOrder(e.target.value as 'desc' | 'asc')}
+                      className="w-full sm:w-auto min-w-[200px] pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-petcare-light/50 outline-none cursor-pointer"
+                    >
+                      <option value="desc">Data: mais recentes primeiro</option>
+                      <option value="asc">Data: mais antigos primeiro</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>
