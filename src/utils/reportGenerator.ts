@@ -64,8 +64,8 @@ const addHeader = async (doc: jsPDF, title: string, branding: BrandingInfo) => {
 const addFooter = (doc: jsPDF, branding: BrandingInfo, pageNumber: number, totalPages: number | null = null) => {
     const pageHeight = doc.internal.pageSize.height;
     const pageWidth = doc.internal.pageSize.width;
-    doc.setFontSize(8);
-    doc.setTextColor(150);
+    doc.setFontSize(9);
+    doc.setTextColor(130);
     doc.setFont('helvetica', 'normal');
     doc.setDrawColor(200);
     doc.line(14, pageHeight - 15, pageWidth - 14, pageHeight - 15);
@@ -90,22 +90,23 @@ const renderHtmlToPdf = (doc: jsPDF, html: string, startX: number, startY: numbe
     .replace(/&nbsp;/g, ' ');
 
   const tokens = text.split(/(<\/?(?:b|strong|i|em|u)>)/g);
-  doc.setFontSize(11);
+  doc.setFontSize(10);
+  doc.setFont('times', 'normal');
   doc.setTextColor(0, 0, 0);
   
   let cursorX = startX;
   let cursorY = startY;
-  const lineHeight = 6;
+  const lineHeight = 5.5;
   const spaceWidth = doc.getTextWidth(' ');
 
   let isBold = false;
   let isItalic = false;
 
   const setFont = () => {
-    if (isBold && isItalic) doc.setFont('helvetica', 'boldoblique');
-    else if (isBold) doc.setFont('helvetica', 'bold');
-    else if (isItalic) doc.setFont('helvetica', 'oblique');
-    else doc.setFont('helvetica', 'normal');
+    if (isBold && isItalic) doc.setFont('times', 'bolditalic');
+    else if (isBold) doc.setFont('times', 'bold');
+    else if (isItalic) doc.setFont('times', 'italic');
+    else doc.setFont('times', 'normal');
   };
   setFont();
 
@@ -312,23 +313,76 @@ export const generatePDFReport = async (
       ? [[ 'SUBTOTAL', '', '', '', '', '', formatMoney(subTotalValue), formatMoney(subTotalProf), formatMoney(subTotalClinic) ]] 
       : [[ 'SUBTOTAL', '', '', '', '', '', formatMoney(subTotalValue) ]];
 
+    /** Larguras em mm (soma = 182, largura útil da tabela) para evitar quebra no SUBTOTAL/valores. */
+    const columnStylesFinancial: Record<number, unknown> = {
+      0: { cellWidth: 22, halign: 'center', valign: 'middle' },
+      1: { cellWidth: 19, valign: 'middle' },
+      2: { cellWidth: 21, valign: 'middle' },
+      3: { cellWidth: 27, valign: 'middle' },
+      4: { cellWidth: 16, halign: 'center', valign: 'middle' },
+      5: { cellWidth: 14, halign: 'center', valign: 'middle' },
+      6: { cellWidth: 21, halign: 'right', fontStyle: 'bold', valign: 'middle' },
+      7: { cellWidth: 21, halign: 'right', textColor: COLORS.primary, valign: 'middle' },
+      8: { cellWidth: 21, halign: 'right', textColor: COLORS.dark, valign: 'middle' }
+    };
+    const columnStylesNoFinancial: Record<number, unknown> = {
+      0: { cellWidth: 22, halign: 'center', valign: 'middle' },
+      1: { cellWidth: 26, valign: 'middle' },
+      2: { cellWidth: 28, valign: 'middle' },
+      3: { cellWidth: 38, valign: 'middle' },
+      4: { cellWidth: 18, halign: 'center', valign: 'middle' },
+      5: { cellWidth: 16, halign: 'center', valign: 'middle' },
+      6: { cellWidth: 24, halign: 'right', fontStyle: 'bold', valign: 'middle' }
+    };
+
     autoTable(doc, {
       startY: currentY,
       head: [tableHeaders],
       body: tableBody,
-      theme: 'grid',
-      headStyles: { fillColor: [COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]], textColor: 255, fontSize: 9, fontStyle: 'bold', halign: 'center' },
-      bodyStyles: { fontSize: 8, textColor: COLORS.text },
-      columnStyles: { 
-        0: { halign: 'center' }, 
-        4: { halign: 'center' }, 
-        6: { halign: 'right', fontStyle: 'bold' }, 
-        7: { halign: 'right', textColor: COLORS.primary }, 
-        8: { halign: 'right', textColor: COLORS.dark } 
-      },
-      alternateRowStyles: { fillColor: [249, 250, 251] },
       foot: footRow,
-      footStyles: { fillColor: [COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]], textColor: 255, fontStyle: 'bold', halign: 'right' }
+      theme: 'grid',
+      tableWidth: 182,
+      styles: {
+        font: 'times',
+        fontSize: 9,
+        cellPadding: 2.5,
+        textColor: COLORS.text,
+        lineColor: [220, 220, 220],
+        lineWidth: 0.1,
+        valign: 'middle',
+        overflow: 'linebreak'
+      },
+      headStyles: {
+        fillColor: [COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]],
+        textColor: 255,
+        font: 'helvetica',
+        fontSize: 10,
+        fontStyle: 'bold',
+        halign: 'center',
+        valign: 'middle',
+        cellPadding: 3
+      },
+      bodyStyles: {
+        font: 'times',
+        fontSize: 9
+      },
+      columnStyles: canViewFinancials ? columnStylesFinancial : columnStylesNoFinancial,
+      alternateRowStyles: { fillColor: [249, 250, 251] },
+      footStyles: {
+        fillColor: [COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]],
+        textColor: 255,
+        font: 'helvetica',
+        fontSize: 9,
+        fontStyle: 'bold',
+        halign: 'right',
+        valign: 'middle',
+        cellPadding: 2.5
+      },
+      didParseCell: (data) => {
+        if (data.section === 'foot' && data.column.index === 0) {
+          data.cell.styles.halign = 'left';
+        }
+      }
     });
 
     currentY = (doc as any).lastAutoTable.finalY + 10;
