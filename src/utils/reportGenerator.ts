@@ -277,7 +277,7 @@ export const generatePDFReport = async (
     doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
     doc.text(formatMoney(totalISS), 158, startY + 18);
     
-    const row2Y = startY + 18;
+    const row2Y = startY + 25;
     doc.setFont(pdfFont, 'normal');
     doc.text('R. Profissional:', 18, row2Y);
     doc.setFont(pdfFont, 'bold');
@@ -296,7 +296,7 @@ export const generatePDFReport = async (
     doc.setFontSize(10);
     doc.setFont(pdfFont, 'normal');
     doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
-    doc.text('Nenhum exame encontrado no período selecionado.', 14, startY + boxHeight + 20);
+    doc.text('Nenhum exame encontrado no período selecionado.', 14, startY + boxHeight + 10);
     window.open(URL.createObjectURL(doc.output('blob')), '_blank');
     return;
   }
