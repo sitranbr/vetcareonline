@@ -302,7 +302,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
     if (authError) return { user: null, error: authError };
     if (data.user) {
-      const profileData = { id: data.user.id, email: newUser.email, name: newUser.name, role: newUser.role, level: newUser.level, owner_id: ownerIdToSet, permissions: newUser.permissions };
+      const profileData = {
+        id: data.user.id,
+        email: newUser.email,
+        name: newUser.name,
+        role: newUser.role,
+        level: newUser.level,
+        owner_id: ownerIdToSet ?? null,
+        permissions: newUser.permissions
+      };
       await supabase.from('profiles').insert(profileData);
       if (newUser.role === 'clinic' || newUser.role === 'vet') {
         const tableName = newUser.role === 'clinic' ? 'clinics' : 'veterinarians';

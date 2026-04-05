@@ -214,6 +214,15 @@ export const OperationalDashboard = () => {
     return currentTenant && !currentTenant.isMe;
   }, [currentTenant]);
 
+  /** Assinante veterinário raiz: conta própria, sem vínculo obrigatório a clínica/outro vet. */
+  const isIndependentVetSubscriber = useMemo(() => {
+    return (
+      user?.role === 'vet' &&
+      user?.level === 3 &&
+      (!user.ownerId || user.ownerId === user.id)
+    );
+  }, [user]);
+
   const availableVeterinarians = useMemo(() => {
     let targetClinicId: string | null = null;
     let isVetContext = false;
@@ -322,7 +331,7 @@ export const OperationalDashboard = () => {
   }, [clinics, extraClinics, guestClinics, ownerClinic, loggedUserEntity, currentTenant, veterinarians, user]);
 
   useEffect(() => {
-    if (activeTab === 'form' && !editingExamId && availableClinicsForVet.length > 0) {
+    if (activeTab === 'form' && !editingExamId && availableClinicsForVet.length > 0 && !isIndependentVetSubscriber) {
       setFormData(prev => {
         if (!prev.clinicId || !availableClinicsForVet.some(c => c.id === prev.clinicId)) {
           return { ...prev, clinicId: availableClinicsForVet[0].id };
@@ -330,7 +339,7 @@ export const OperationalDashboard = () => {
         return prev;
       });
     }
-  }, [availableClinicsForVet, activeTab, editingExamId]);
+  }, [availableClinicsForVet, activeTab, editingExamId, isIndependentVetSubscriber]);
 
   const fetchData = async () => {
     if (!currentTenant) return;
@@ -498,13 +507,30 @@ export const OperationalDashboard = () => {
   const [examListDateOrder, setExamListDateOrder] = useState<'desc' | 'asc'>('desc');
   
   const canViewFinancials = user?.permissions?.view_financials && !isPartnerView;
-  const canManagePrices = user?.permissions?.manage_prices && !isPartnerView;
-  
+  /** Veterinário assinante independente precisa da aba de preços para cumprir a regra do 1º exame. */
+  const canManagePrices =
+    (user?.permissions?.manage_prices || isIndependentVetSubscriber) && !isPartnerView;
+
   const hasPriceSubPermissions = user?.permissions?.visualizar_precos !== undefined;
-  const canCreatePriceRule = !isPartnerView && (user?.level === 1 || (hasPriceSubPermissions ? user?.permissions?.criar_regra_preco : user?.permissions?.manage_prices));
-  const canEditPriceRule = !isPartnerView && (user?.level === 1 || (hasPriceSubPermissions ? user?.permissions?.editar_regra_preco : user?.permissions?.manage_prices));
-  const canDeletePriceRule = !isPartnerView && (user?.level === 1 || (hasPriceSubPermissions ? user?.permissions?.excluir_regra_preco : user?.permissions?.manage_prices));
-  const canCopyPriceTable = !isPartnerView && (user?.level === 1 || (hasPriceSubPermissions ? user?.permissions?.copiar_tabela_precos : user?.permissions?.manage_prices));
+  const canCreatePriceRule =
+    !isPartnerView &&
+    (user?.level === 1 ||
+      isIndependentVetSubscriber ||
+      (hasPriceSubPermissions ? user?.permissions?.criar_regra_preco : user?.permissions?.manage_prices));
+  const canEditPriceRule =
+    !isPartnerView &&
+    (user?.level === 1 ||
+      isIndependentVetSubscriber ||
+      (hasPriceSubPermissions ? user?.permissions?.editar_regra_preco : user?.permissions?.manage_prices));
+  const canDeletePriceRule =
+    !isPartnerView &&
+    (user?.level === 1 ||
+      isIndependentVetSubscriber ||
+      (hasPriceSubPermissions ? user?.permissions?.excluir_regra_preco : user?.permissions?.manage_prices));
+  const canCopyPriceTable =
+    !isPartnerView &&
+    (user?.level === 1 ||
+      (hasPriceSubPermissions ? user?.permissions?.copiar_tabela_precos : user?.permissions?.manage_prices));
   
   const canCreateExam = (user?.level === 1 || user?.role === 'clinic' || user?.role === 'vet' || user?.permissions?.criar_exame) && !isPartnerView;
   const canEditExamDetails = user?.level === 1 || user?.role === 'clinic' || user?.role === 'vet' || user?.permissions?.criar_exame || user?.permissions?.editar_resultados;
@@ -571,6 +597,9 @@ export const OperationalDashboard = () => {
       return clinicMatch && vetMatch;
     });
 
+    const blockModalityFallbacks =
+      isIndependentVetSubscriber && relevantRules.length === 0;
+
     if (relevantRules.length > 0) {
       relevantRules.forEach(r => {
         if (r.modality === 'OUTROS') {
@@ -584,7 +613,7 @@ export const OperationalDashboard = () => {
           }
         }
       });
-    } else if (priceRules.length === 0) {
+    } else if (priceRules.length === 0 && !blockModalityFallbacks) {
       const baseModalities = [
         { value: 'USG', label: 'Ultrassom', isCustom: false },
         { value: 'RX', label: 'Raio-X', isCustom: false },
@@ -592,18 +621,18 @@ export const OperationalDashboard = () => {
         { value: 'USG_FAST', label: 'USG Fast', isCustom: false },
         { value: 'RX_FAST', label: 'Raio-X FAST', isCustom: false }
       ];
-      
+
       baseModalities.forEach(bm => {
         examsMap.set(bm.value, bm);
       });
     }
-    
-    if (!examsMap.has('OUTROS|')) {
+
+    if (!examsMap.has('OUTROS|') && !blockModalityFallbacks) {
       examsMap.set('OUTROS|', { value: 'OUTROS|', label: 'Outro (Novo Exame)', isCustom: true });
     }
 
     return Array.from(examsMap.values());
-  }, [priceRules, effectiveClinicId, formData.veterinarianId]);
+  }, [priceRules, effectiveClinicId, formData.veterinarianId, isIndependentVetSubscriber]);
 
   const availablePeriods = useMemo(() => {
     const cleanEffectiveId = (effectiveClinicId || '').trim();
@@ -645,6 +674,22 @@ export const OperationalDashboard = () => {
     return allStandardPeriods.filter(p => periods.has(p.value));
   }, [priceRules, effectiveClinicId, formData.veterinarianId]);
 
+  /** Veterinário assinante independente: exige ao menos uma regra de preço com valor antes do 1º exame. */
+  const vetHasAtLeastOnePricedRule = useMemo(() => {
+    if (!isIndependentVetSubscriber) return true;
+    const cleanEffectiveId = (effectiveClinicId || '').trim();
+    const safeVetId = (formData.veterinarianId || loggedUserEntity?.id || '').trim();
+    if (!safeVetId) return false;
+    const relevant = priceRules.filter(r => {
+      const ruleClinicId = (r.clinicId || '').trim();
+      const ruleVetId = (r.veterinarianId || '').trim();
+      const clinicMatch = !ruleClinicId || ruleClinicId === 'default' || ruleClinicId === cleanEffectiveId;
+      const vetMatch = !ruleVetId || ruleVetId === 'default' || ruleVetId === safeVetId;
+      return clinicMatch && vetMatch;
+    });
+    return relevant.some(r => r.valor != null && Number(r.valor) > 0);
+  }, [isIndependentVetSubscriber, priceRules, effectiveClinicId, formData.veterinarianId, loggedUserEntity?.id]);
+
   useEffect(() => {
     if (activeTab === 'form' && availablePeriods.length > 0) {
       if (!availablePeriods.some(p => p.value === formData.period)) {
@@ -655,10 +700,21 @@ export const OperationalDashboard = () => {
 
   const handleSaveExam = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!editingExamId && isIndependentVetSubscriber && !vetHasAtLeastOnePricedRule) {
+      alert('Antes de cadastrar um exame, é necessário definir o preço de pelo menos um tipo de exame.');
+      return;
+    }
+
     setIsSavingExam(true);
 
     try {
-      const clinicForSave = formData.clinicId || effectiveClinicId;
+      const rawClinic = formData.clinicId || effectiveClinicId;
+      const clinicForSave =
+        isIndependentVetSubscriber && !String(rawClinic || '').trim()
+          ? null
+          : rawClinic || null;
+
       const examsToSave = formData.items.map(item => {
         const values = calculateExamValues(item.modality, formData.period, formData.machineOwner, priceRules, item.studies, effectiveClinicId, item.studyDescription, formData.veterinarianId);
         
@@ -1423,7 +1479,7 @@ export const OperationalDashboard = () => {
               </div>
             )}
 
-            {loggedUserEntity?.type === 'vet' && availableClinicsForVet.length === 0 && (
+            {loggedUserEntity?.type === 'vet' && availableClinicsForVet.length === 0 && !isIndependentVetSubscriber && (
               <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3 animate-fade-in">
                 <LinkIcon className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <div>
@@ -1431,6 +1487,25 @@ export const OperationalDashboard = () => {
                   <p className="text-sm text-amber-700 mt-1">
                     Para lançar exames, você precisa estar vinculado a uma clínica parceira. Solicite o vínculo à clínica.
                   </p>
+                </div>
+              </div>
+            )}
+
+            {!editingExamId && isIndependentVetSubscriber && !vetHasAtLeastOnePricedRule && (
+              <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3 animate-fade-in">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="font-bold text-amber-800 text-sm">Cadastre preços antes dos exames</h3>
+                  <p className="text-sm text-amber-800 mt-1">
+                    Antes de cadastrar um exame, é necessário definir o preço de pelo menos um tipo de exame na Tabela de Preços.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('prices')}
+                    className="mt-3 text-xs font-bold bg-amber-100 text-amber-900 px-3 py-2 rounded-lg hover:bg-amber-200 transition-colors inline-flex items-center gap-1"
+                  >
+                    <Tag className="w-3.5 h-3.5" /> Abrir Tabela de Preços
+                  </button>
                 </div>
               </div>
             )}
@@ -1469,12 +1544,27 @@ export const OperationalDashboard = () => {
 
                 {loggedUserEntity?.type === 'vet' ? (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Clínica (Local do Exame)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Clínica (Local do Exame){isIndependentVetSubscriber ? <span className="text-gray-400 font-normal"> — opcional</span> : null}
+                    </label>
                     {availableClinicsForVet.length > 0 ? (
-                      <select required value={formData.clinicId} onChange={e => setFormData({...formData, clinicId: e.target.value})} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT">
-                        <option value="">Selecione a Clínica</option>
-                        {availableClinicsForVet.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      <select
+                        required={!isIndependentVetSubscriber}
+                        value={formData.clinicId}
+                        onChange={e => setFormData({ ...formData, clinicId: e.target.value })}
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT"
+                      >
+                        <option value="">{isIndependentVetSubscriber ? 'Sem clínica (atendimento independente)' : 'Selecione a Clínica'}</option>
+                        {availableClinicsForVet.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
                       </select>
+                    ) : isIndependentVetSubscriber ? (
+                      <p className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                        Atendimento independente: você pode lançar exames sem vincular uma clínica. A clínica permanece opcional se você passar a atender parceiros depois.
+                      </p>
                     ) : (
                       <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
                         <div className="flex items-start gap-2">
@@ -1657,7 +1747,14 @@ export const OperationalDashboard = () => {
               </div>
 
               <div className="flex justify-end pt-4">
-                <button type="submit" disabled={isSavingExam} className="bg-petcare-dark text-white px-8 py-3 rounded-lg font-bold hover:bg-petcare-DEFAULT transition-all shadow-lg flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={
+                    isSavingExam ||
+                    (!editingExamId && isIndependentVetSubscriber && !vetHasAtLeastOnePricedRule)
+                  }
+                  className="bg-petcare-dark text-white px-8 py-3 rounded-lg font-bold hover:bg-petcare-DEFAULT transition-all shadow-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   {isSavingExam ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                   {editingExamId ? 'Atualizar Exame' : 'Salvar Exames'}
                 </button>

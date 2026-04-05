@@ -243,6 +243,21 @@ export const AdminSettings = () => {
         </div>
       )}
 
+      {user?.role === 'vet' &&
+        user?.level === 3 &&
+        (!user.ownerId || user.ownerId === user.id) && (
+          <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 flex items-start gap-3 text-sky-900 text-sm">
+            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-sky-600" />
+            <div>
+              <p className="font-semibold">Conta de veterinário independente</p>
+              <p className="mt-1 text-sky-800">
+                Você pode usar o sistema sem vincular clínica. Antes do primeiro cadastro de exame no dashboard, cadastre{' '}
+                <strong>ao menos um preço</strong> na aba <strong>Tabela de Preços</strong>, para manter a consistência financeira.
+              </p>
+            </div>
+          </div>
+        )}
+
       {activeTab === 'profile' && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 animate-fade-in">
           <h2 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
