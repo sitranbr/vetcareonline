@@ -184,10 +184,8 @@ export const OperationalDashboard = () => {
   useEffect(() => {
     if (activeTab === 'list') {
       setShowFinancialStats(true);
-      if (activeTab !== 'form') {
-        setEditingExamId(null);
-        resetForm();
-      }
+      setEditingExamId(null);
+      resetForm();
     } else {
       setShowFinancialStats(false);
     }
@@ -560,41 +558,170 @@ export const OperationalDashboard = () => {
   const [examListDateFrom, setExamListDateFrom] = useState('');
   const [examListDateTo, setExamListDateTo] = useState('');
   const [examListPage, setExamListPage] = useState(1);
-  
-  const canViewFinancials = user?.permissions?.view_financials && !isPartnerView;
-  /** Veterinário assinante independente precisa da aba de preços para cumprir a regra do 1º exame. */
-  const canManagePrices =
-    (user?.permissions?.manage_prices || isIndependentVetSubscriber) && !isPartnerView;
 
-  const hasPriceSubPermissions = user?.permissions?.visualizar_precos !== undefined;
-  const canCreatePriceRule =
-    !isPartnerView &&
-    (user?.level === 1 ||
-      isIndependentVetSubscriber ||
-      (hasPriceSubPermissions ? user?.permissions?.criar_regra_preco : user?.permissions?.manage_prices));
-  const canEditPriceRule =
-    !isPartnerView &&
-    (user?.level === 1 ||
-      isIndependentVetSubscriber ||
-      (hasPriceSubPermissions ? user?.permissions?.editar_regra_preco : user?.permissions?.manage_prices));
-  const canDeletePriceRule =
-    !isPartnerView &&
-    (user?.level === 1 ||
-      isIndependentVetSubscriber ||
-      (hasPriceSubPermissions ? user?.permissions?.excluir_regra_preco : user?.permissions?.manage_prices));
-  const canCopyPriceTable =
-    !isPartnerView &&
-    (user?.level === 1 ||
-      (hasPriceSubPermissions ? user?.permissions?.copiar_tabela_precos : user?.permissions?.manage_prices));
-  
-  const canCreateExam = (user?.level === 1 || user?.role === 'clinic' || user?.role === 'vet' || user?.permissions?.criar_exame) && !isPartnerView;
-  const canEditExamDetails = user?.level === 1 || user?.role === 'clinic' || user?.role === 'vet' || user?.permissions?.criar_exame || user?.permissions?.editar_resultados;
-  const canEditReports = user?.level === 1 || user?.role === 'vet' || user?.permissions?.edit_reports;
-  
-  const hasReportSubPermissions = user?.permissions?.gerar_pdf_exame !== undefined;
-  const canPrintExam = user?.level === 1 || (hasReportSubPermissions ? user?.permissions?.gerar_pdf_exame : (user?.role === 'vet' || user?.role === 'clinic' || user?.permissions?.export_reports || user?.permissions?.edit_reports));
+  /** Permissões alinhadas à tela de criação de membros (AdminUserForm): sem bypass por role vet/clínica. */
+  const permFlags = useMemo(() => {
+    const p = user?.permissions;
+    const level1 = user?.level === 1;
+    const hasFinancialSubPermissions = p?.visualizar_valores !== undefined;
+    const hasVisualizarExamesSub = p?.visualizar_exames !== undefined;
+    const hasCriarExameSub = p?.criar_exame !== undefined;
+    const hasPriceSubPermissions = p?.visualizar_precos !== undefined;
+    const hasReportSubPermissions = p?.gerar_pdf_exame !== undefined;
+    const hasDeleteSubPermissions = p?.excluir_exame_proprio !== undefined;
+    const hasExportSubPermissions = p?.gerar_pdf_relatorio !== undefined;
 
-  const getBrandingForExam = (exam: Exam): BrandingInfo => {
+    const showCardFaturamento =
+      level1 ||
+      (!isPartnerView &&
+        (hasFinancialSubPermissions
+          ? !!(p?.visualizar_totais || p?.view_financials)
+          : !!p?.view_financials));
+
+    const showCardRepasse =
+      level1 ||
+      (!isPartnerView &&
+        (hasFinancialSubPermissions
+          ? !!(p?.visualizar_repasses || p?.view_financials)
+          : !!p?.view_financials));
+
+    const canViewFinancialSummary = showCardFaturamento || showCardRepasse;
+
+    const canViewExamValueColumn =
+      level1 ||
+      (!isPartnerView &&
+        (hasFinancialSubPermissions
+          ? !!(p?.visualizar_valores || p?.view_financials)
+          : !!p?.view_financials));
+
+    const canViewFinancialReports =
+      level1 ||
+      (!isPartnerView &&
+        (hasFinancialSubPermissions
+          ? !!(p?.visualizar_relatorios_financeiros || p?.view_financials)
+          : !!p?.view_financials));
+
+    const canViewExamList =
+      level1 ||
+      (hasVisualizarExamesSub ? !!p?.visualizar_exames : !!(p?.edit_reports || p?.criar_exame));
+
+    const canCreateExam =
+      (level1 || (hasCriarExameSub ? !!p?.criar_exame : !!p?.edit_reports)) && !isPartnerView;
+
+    const canEditExamDetails =
+      level1 || (hasCriarExameSub ? !!p?.editar_resultados : !!p?.edit_reports);
+
+    /** Aba do formulário: novo exame ou edição de exame existente. */
+    const canViewExamFormTab = canCreateExam || canEditExamDetails;
+
+    const canEditReports = level1 || !!p?.edit_reports;
+
+    const canPrintExam =
+      level1 || (hasReportSubPermissions ? !!p?.gerar_pdf_exame : !!p?.export_reports);
+
+    const canExportFinancialReportPdf =
+      level1 || (hasExportSubPermissions ? !!p?.gerar_pdf_relatorio : !!p?.export_reports);
+
+    /** Veterinário assinante independente precisa da aba de preços para cumprir a regra do 1º exame. */
+    const canAccessPriceTab =
+      level1 ||
+      (!isPartnerView &&
+        (isIndependentVetSubscriber ||
+          (hasPriceSubPermissions ? !!(p?.manage_prices || p?.visualizar_precos) : !!p?.manage_prices)));
+
+    const canCreatePriceRule =
+      !isPartnerView &&
+      (level1 ||
+        isIndependentVetSubscriber ||
+        (hasPriceSubPermissions ? !!p?.criar_regra_preco : !!p?.manage_prices));
+    const canEditPriceRule =
+      !isPartnerView &&
+      (level1 ||
+        isIndependentVetSubscriber ||
+        (hasPriceSubPermissions ? !!p?.editar_regra_preco : !!p?.manage_prices));
+    const canDeletePriceRule =
+      !isPartnerView &&
+      (level1 ||
+        isIndependentVetSubscriber ||
+        (hasPriceSubPermissions ? !!p?.excluir_regra_preco : !!p?.manage_prices));
+    const canCopyPriceTable =
+      !isPartnerView &&
+      (level1 ||
+        (hasPriceSubPermissions ? !!p?.copiar_tabela_precos : !!p?.manage_prices));
+
+    return {
+      p,
+      hasFinancialSubPermissions,
+      hasPriceSubPermissions,
+      hasDeleteSubPermissions,
+      showCardFaturamento,
+      showCardRepasse,
+      canViewFinancialSummary,
+      canViewExamValueColumn,
+      canViewFinancialReports,
+      canViewExamList,
+      canCreateExam,
+      canViewExamFormTab,
+      canEditExamDetails,
+      canEditReports,
+      canPrintExam,
+      canExportFinancialReportPdf,
+      canAccessPriceTab,
+      canCreatePriceRule,
+      canEditPriceRule,
+      canDeletePriceRule,
+      canCopyPriceTable,
+    };
+  }, [user, isPartnerView, isIndependentVetSubscriber]);
+
+  const {
+    hasDeleteSubPermissions,
+    showCardFaturamento,
+    showCardRepasse,
+    canViewFinancialSummary,
+    canViewExamValueColumn,
+    canViewFinancialReports,
+    canViewExamList,
+    canCreateExam,
+    canViewExamFormTab,
+    canEditExamDetails,
+    canEditReports,
+    canPrintExam,
+    canExportFinancialReportPdf,
+    canAccessPriceTab,
+    canCreatePriceRule,
+    canEditPriceRule,
+    canDeletePriceRule,
+    canCopyPriceTable,
+  } = permFlags;
+
+  const examCanDeleteRow = (exam: Exam): boolean => {
+    if (user?.level === 1) return true;
+    const p = user?.permissions;
+    if (!p?.delete_exams) return false;
+    if (!hasDeleteSubPermissions) return true;
+    const isMine =
+      (loggedUserEntity?.type === 'vet' && loggedUserEntity.id === exam.veterinarianId) ||
+      (loggedUserEntity?.type === 'clinic' && loggedUserEntity.id === exam.clinicId);
+    return isMine ? !!p.excluir_exame_proprio : !!p.excluir_exame_outros;
+  };
+
+  useEffect(() => {
+    const order: Array<'list' | 'form' | 'reports' | 'prices'> = ['list', 'form', 'reports', 'prices'];
+    const allowed = order.filter((id) => {
+      if (id === 'list') return canViewExamList;
+      if (id === 'form') return canViewExamFormTab;
+      if (id === 'reports') return canViewFinancialReports;
+      if (id === 'prices') return canAccessPriceTab;
+      return false;
+    });
+    if (allowed.length === 0) return;
+    if (!allowed.includes(activeTab)) {
+      setActiveTab(allowed[0]);
+    }
+  }, [canViewExamList, canViewExamFormTab, canViewFinancialReports, canAccessPriceTab, activeTab]);
+
+  const getBrandingForExam = (_exam: Exam): BrandingInfo => {
     return { 
       name: settings.name || settings.systemName, 
       logoUrl: settings.logoUrl, 
@@ -793,6 +920,16 @@ export const OperationalDashboard = () => {
     e.preventDefault();
     setExamSaveError(null);
 
+    if (editingExamId) {
+      if (!canEditExamDetails) {
+        alert('Sem permissão para editar dados do exame.');
+        return;
+      }
+    } else if (!canCreateExam) {
+      alert('Sem permissão para cadastrar novos exames.');
+      return;
+    }
+
     if (!editingExamId && isIndependentVetSubscriber && !vetHasAtLeastOnePricedRule) {
       alert('Antes de cadastrar um exame, é necessário definir o preço de pelo menos um tipo de exame.');
       return;
@@ -867,10 +1004,12 @@ export const OperationalDashboard = () => {
   };
 
   const handleEditReport = (exam: Exam) => {
+    if (!canEditReports) return;
     setReportEditorState({ isOpen: true, exam });
   };
 
   const handleSaveReport = async (examId: string, content: string, images: string[], studyId?: string) => {
+    if (!canEditReports) return;
     try {
       if (!studyId) {
         const { error } = await supabase.from('exams').update({
@@ -889,6 +1028,10 @@ export const OperationalDashboard = () => {
   };
 
   const handleExportPDF = async () => {
+    if (!canExportFinancialReportPdf) {
+      alert('Sem permissão para exportar relatórios em PDF.');
+      return;
+    }
     setIsGeneratingPdf(true);
     try {
       const branding = getBrandingForExam(exams[0] || {} as Exam);
@@ -915,6 +1058,7 @@ export const OperationalDashboard = () => {
   };
 
   const handlePrintReport = async (exam: Exam) => {
+    if (!canPrintExam) return;
     setIsGeneratingPdf(true);
     try {
       const branding = getBrandingForExam(exam);
@@ -929,6 +1073,7 @@ export const OperationalDashboard = () => {
   };
 
   const handleEditExam = (exam: Exam) => {
+    if (!canEditExamDetails) return;
     setEditingExamId(exam.id);
     setFormData({
       date: exam.date,
@@ -960,8 +1105,8 @@ export const OperationalDashboard = () => {
 
   const confirmDelete = (id: string) => {
     const isOwnerOrAdmin = user?.level === 1 || user?.level === 3 || user?.level === 4;
-    const hasBypassPermission = user?.permissions.bypass_delete_password;
-    
+    const hasBypassPermission = user?.permissions?.bypass_delete_password;
+
     setConfirmationState({
       isOpen: true,
       type: 'exam',
@@ -1366,7 +1511,7 @@ export const OperationalDashboard = () => {
         </div>
       )}
 
-      {canViewFinancials && (
+      {canViewFinancialSummary && (
         <div className="animate-fade-in">
           <div className="flex justify-between items-center mb-2">
             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Resumo Operacional</h3>
@@ -1385,9 +1530,15 @@ export const OperationalDashboard = () => {
           
           {showFinancialStats && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <SummaryCard title="Faturamento Total" value={formatMoney(listStats.totalArrecadado)} subtitle={`${listStats.count} exames listados`} icon={DollarSign} colorClass="text-green-600" iconColorClass="text-green-600" />
-              <SummaryCard title="Repasse Profissional" value={formatMoney(listStats.totalRepasseProf)} subtitle="A Pagar" icon={UserCheck} colorClass="text-blue-600" iconColorClass="text-blue-600" />
-              <SummaryCard title="Repasse Clínica" value={formatMoney(listStats.totalRepasseClinic)} subtitle="Receita Líquida" icon={Building2} colorClass="text-purple-600" iconColorClass="text-purple-600" />
+              {showCardFaturamento && (
+                <SummaryCard title="Faturamento Total" value={formatMoney(listStats.totalArrecadado)} subtitle={`${listStats.count} exames listados`} icon={DollarSign} colorClass="text-green-600" iconColorClass="text-green-600" />
+              )}
+              {showCardRepasse && (
+                <SummaryCard title="Repasse Profissional" value={formatMoney(listStats.totalRepasseProf)} subtitle="A Pagar" icon={UserCheck} colorClass="text-blue-600" iconColorClass="text-blue-600" />
+              )}
+              {showCardRepasse && (
+                <SummaryCard title="Repasse Clínica" value={formatMoney(listStats.totalRepasseClinic)} subtitle="Receita Líquida" icon={Building2} colorClass="text-purple-600" iconColorClass="text-purple-600" />
+              )}
             </div>
           )}
         </div>
@@ -1395,9 +1546,10 @@ export const OperationalDashboard = () => {
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-1 flex gap-2 overflow-x-auto">
         {TABS.map(tab => {
-          if (tab.id === 'prices' && !canManagePrices) return null;
-          if (tab.id === 'reports' && !canViewFinancials) return null;
-          if (tab.id === 'form' && !canCreateExam) return null;
+          if (tab.id === 'list' && !canViewExamList) return null;
+          if (tab.id === 'prices' && !canAccessPriceTab) return null;
+          if (tab.id === 'reports' && !canViewFinancialReports) return null;
+          if (tab.id === 'form' && !canViewExamFormTab) return null;
           
           return (
             <button
@@ -1422,7 +1574,7 @@ export const OperationalDashboard = () => {
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 min-h-[500px]">
         
-        {activeTab === 'list' && (
+        {activeTab === 'list' && canViewExamList && (
           <div className="p-6">
             
             <div className="flex flex-col md:flex-row gap-4 mb-6 justify-between items-center">
@@ -1491,22 +1643,24 @@ export const OperationalDashboard = () => {
                     <th className="p-4">Exame</th>
                     <th className="p-4">Veterinário</th>
                     <th className="p-4">Clínica</th>
-                    {canViewFinancials && <th className="p-4 text-right">Valor</th>}
+                    {canViewExamValueColumn && <th className="p-4 text-right">Valor</th>}
                     <th className="p-4 rounded-tr-lg text-center">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-sm text-gray-700">
                   {filteredExamsForList.length === 0 ? (
                     <tr>
-                      <td colSpan={canViewFinancials ? 7 : 6} className="p-8 text-center text-gray-400">
+                      <td colSpan={canViewExamValueColumn ? 7 : 6} className="p-8 text-center text-gray-400">
                         {exams.length === 0 ? 'Nenhum exame encontrado.' : 'Nenhum exame corresponde à busca.'}
                       </td>
                     </tr>
                   ) : (
                     paginatedExamsForList
                       .map(exam => {
-                        const isMyExam = loggedUserEntity?.type === 'vet' && loggedUserEntity.id === exam.veterinarianId;
-                        const canEditThisReport = canEditReports && (isMyExam || user?.level === 1);
+                        const isMyExamRow =
+                          (loggedUserEntity?.type === 'vet' && loggedUserEntity.id === exam.veterinarianId) ||
+                          (loggedUserEntity?.type === 'clinic' && loggedUserEntity.id === exam.clinicId);
+                        const canEditThisReport = canEditReports && (isMyExamRow || user?.level === 1);
 
                         return (
                         <tr key={exam.id} className="hover:bg-gray-50/50 transition-colors group">
@@ -1546,7 +1700,7 @@ export const OperationalDashboard = () => {
                             </div>
                           </td>
 
-                          {canViewFinancials && (
+                          {canViewExamValueColumn && (
                             <td className="p-4 text-right font-medium text-gray-900">
                               {formatMoney(exam.totalValue)}
                             </td>
@@ -1590,7 +1744,7 @@ export const OperationalDashboard = () => {
                                 </button>
                               )}
 
-                              {user?.permissions.delete_exams && (
+                              {examCanDeleteRow(exam) && (
                                 <button 
                                   onClick={() => confirmDelete(exam.id)}
                                   className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" 
@@ -1650,7 +1804,7 @@ export const OperationalDashboard = () => {
           </div>
         )}
 
-        {activeTab === 'form' && (
+        {activeTab === 'form' && canViewExamFormTab && (
           <div className="p-6 max-w-4xl mx-auto">
             <h2 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
               <PlusCircle className="w-6 h-6 text-petcare-DEFAULT" />
@@ -1970,7 +2124,7 @@ export const OperationalDashboard = () => {
           </div>
         )}
 
-        {activeTab === 'reports' && canViewFinancials && (
+        {activeTab === 'reports' && canViewFinancialReports && (
           <div className="p-6">
             <div className="flex justify-between items-center mb-6">
               <div className="flex items-center gap-4 flex-wrap">
@@ -2004,7 +2158,7 @@ export const OperationalDashboard = () => {
 
                 <button 
                   onClick={handleExportPDF} 
-                  disabled={isGeneratingPdf}
+                  disabled={isGeneratingPdf || !canExportFinancialReportPdf}
                   className="bg-petcare-dark text-white px-4 py-2 rounded-lg font-bold hover:bg-petcare-DEFAULT transition-colors flex items-center gap-2 shadow-md disabled:opacity-70"
                 >
                   {isGeneratingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
@@ -2059,7 +2213,7 @@ export const OperationalDashboard = () => {
           </div>
         )}
 
-        {activeTab === 'prices' && canManagePrices && (
+        {activeTab === 'prices' && canAccessPriceTab && (
           <div className="p-6">
             <div className="flex flex-col gap-4 mb-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
