@@ -422,23 +422,48 @@ export const OperationalDashboard = () => {
         query = query.eq('veterinarian_id', currentTenant.id);
       }
     } else {
+      /**
+       * Contexto clínica (assinante): exames costumam ter clinic_id = local do atendimento.
+       * Se o perfil foi alterado de veterinário para clínica (só role/level), o histórico continua
+       * com veterinarian_id = cadastro vet e clinic_id = parceiros — filtrar só por clinic_id do
+       * assinante esconde tudo. Incluímos OR com vets vinculados ao mesmo profile_id.
+       */
+      const ownerProfileId = user?.ownerId && user.ownerId !== user.id ? user.ownerId : user?.id;
+      const linkedVetIds = ownerProfileId
+        ? veterinarians.filter((v) => v.profileId === ownerProfileId).map((v) => v.id)
+        : [];
       const idsArray = Array.from(clinicIds);
-      if (idsArray.length > 0) {
-        query = query.in('clinic_id', idsArray);
-      } else {
-        query = query.eq('clinic_id', currentTenant.id);
-      }
-      
+
       if (isPartnerView && loggedUserEntity?.type === 'vet') {
-         const myVetIds = new Set<string>();
-         if (loggedUserEntity.id) myVetIds.add(loggedUserEntity.id);
-         if (user?.id) myVetIds.add(user.id);
-         veterinarians.filter(v => v.profileId === user?.id).forEach(v => myVetIds.add(v.id));
-         
-         const myVetIdsArray = Array.from(myVetIds).filter(id => id && id.trim() !== '');
-         if (myVetIdsArray.length > 0) {
-           query = query.in('veterinarian_id', myVetIdsArray);
-         }
+        const myVetIds = new Set<string>();
+        if (loggedUserEntity.id) myVetIds.add(loggedUserEntity.id);
+        if (user?.id) myVetIds.add(user.id);
+        veterinarians.filter((v) => v.profileId === user?.id).forEach((v) => myVetIds.add(v.id));
+
+        const myVetIdsArray = Array.from(myVetIds).filter((id) => id && id.trim() !== '');
+        if (idsArray.length > 0) {
+          query = query.in('clinic_id', idsArray);
+        } else {
+          query = query.eq('clinic_id', currentTenant.id);
+        }
+        if (myVetIdsArray.length > 0) {
+          query = query.in('veterinarian_id', myVetIdsArray);
+        }
+      } else {
+        const orParts: string[] = [];
+        if (idsArray.length > 0) {
+          orParts.push(`clinic_id.in.(${idsArray.join(',')})`);
+        }
+        if (linkedVetIds.length > 0) {
+          orParts.push(`veterinarian_id.in.(${linkedVetIds.join(',')})`);
+        }
+        if (orParts.length === 0) {
+          query = query.eq('id', '00000000-0000-0000-0000-000000000000');
+        } else if (orParts.length === 1) {
+          query = query.or(orParts[0]);
+        } else {
+          query = query.or(orParts.join(','));
+        }
       }
     }
 
