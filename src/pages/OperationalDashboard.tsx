@@ -39,6 +39,35 @@ const formatPriceRuleCopyPreviewLine = (r: {
   return { exam, periodText };
 };
 
+/** Normaliza IDs de escopo (alinhado ao duplicateRule do formulário de preço). */
+const normalizePriceRuleScopeId = (id?: string | null) =>
+  !id || id === 'default' ? '' : String(id).trim();
+
+/**
+ * Chave lógica de unicidade: escopo (clínica + vet) + modalidade + período.
+ * Duas regras com o mesmo label mas escopo/modalidade/período iguais contam como duplicata.
+ */
+const priceRuleDuplicateKey = (r: {
+  clinicId?: string | null;
+  veterinarianId?: string | null;
+  modality?: string | null;
+  period?: string | null;
+}) =>
+  `${normalizePriceRuleScopeId(r.clinicId)}|${normalizePriceRuleScopeId(r.veterinarianId)}|${String(r.modality ?? '').trim()}|${String(r.period ?? '').trim()}`;
+
+const priceRuleDuplicateKeyFromMappedInsert = (r: {
+  clinic_id?: string | null;
+  veterinarian_id?: string | null;
+  modality?: string | null;
+  period?: string | null;
+}) =>
+  priceRuleDuplicateKey({
+    clinicId: r.clinic_id,
+    veterinarianId: r.veterinarian_id,
+    modality: r.modality,
+    period: r.period,
+  });
+
 /** Regra sem clínica específica (vale para qualquer clínica no cálculo; não deve misturar ao filtrar uma clínica). */
 const isGenericClinicId = (clinicId?: string | null) => {
   const c = (clinicId ?? '').trim();
@@ -1371,7 +1400,13 @@ export const OperationalDashboard = () => {
   const executeCopyPrices = async (payload: any) => {
     const { sourceRules, donorType, targetType, targetId, sourceName, targetName } = payload;
     try {
-      const rulesToInsert = sourceRules.map((rule: any) => {
+      const tenantOwnerId = user?.ownerId || user?.id;
+      if (!tenantOwnerId) {
+        alert('Sessão inválida. Faça login novamente.');
+        return;
+      }
+
+      const mapSourceRuleToTargetRow = (rule: any) => {
         let newClinicId = rule.clinic_id;
         let newVetId = rule.veterinarian_id;
 
@@ -1388,7 +1423,7 @@ export const OperationalDashboard = () => {
         }
 
         return {
-          owner_id: user?.ownerId || user?.id,
+          owner_id: tenantOwnerId,
           clinic_id: newClinicId || 'default',
           veterinarian_id: newVetId,
           modality: rule.modality,
@@ -1403,15 +1438,94 @@ export const OperationalDashboard = () => {
           taxa_extra_clinic: rule.taxa_extra_clinic || 0,
           observacoes: rule.observacoes || ''
         };
-      });
+      };
 
-      const { error } = await supabase
+      /** Evita duas linhas do doador mapeadas para a mesma chave no receptor. */
+      const mappedUnique: ReturnType<typeof mapSourceRuleToTargetRow>[] = [];
+      const seenKeys = new Set<string>();
+      for (const rule of sourceRules as any[]) {
+        const row = mapSourceRuleToTargetRow(rule);
+        const k = priceRuleDuplicateKeyFromMappedInsert(row);
+        if (seenKeys.has(k)) continue;
+        seenKeys.add(k);
+        mappedUnique.push(row);
+      }
+
+      let existingQuery = supabase
         .from('price_rules')
-        .insert(rulesToInsert);
+        .select('id, clinic_id, veterinarian_id, modality, period')
+        .eq('owner_id', tenantOwnerId);
+      if (targetType === 'clinic') {
+        existingQuery = existingQuery.eq('clinic_id', targetId);
+      } else {
+        existingQuery = existingQuery.eq('veterinarian_id', targetId);
+      }
 
-      if (error) throw error;
+      const { data: existingRows, error: existingErr } = await existingQuery;
+      if (existingErr) throw existingErr;
 
-      alert(`✅ ${rulesToInsert.length} regra(s) de preço copiada(s) de "${sourceName}" para "${targetName}" com sucesso!`);
+      const existingIdByKey = new Map<string, string>();
+      for (const row of existingRows || []) {
+        const k = priceRuleDuplicateKeyFromMappedInsert(row);
+        if (!existingIdByKey.has(k)) existingIdByKey.set(k, row.id);
+      }
+
+      const toInsert: typeof mappedUnique = [];
+      const toUpdate: { id: string; patch: (typeof mappedUnique)[number] }[] = [];
+
+      for (const row of mappedUnique) {
+        const k = priceRuleDuplicateKeyFromMappedInsert(row);
+        const existingId = existingIdByKey.get(k);
+        if (existingId) {
+          toUpdate.push({ id: existingId, patch: row });
+        } else {
+          toInsert.push(row);
+        }
+      }
+
+      if (toInsert.length > 0) {
+        const { error: insErr } = await supabase.from('price_rules').insert(toInsert);
+        if (insErr) throw insErr;
+      }
+
+      if (toUpdate.length > 0) {
+        const results = await Promise.all(
+          toUpdate.map(({ id, patch }) =>
+            supabase
+              .from('price_rules')
+              .update({
+                clinic_id: patch.clinic_id,
+                veterinarian_id: patch.veterinarian_id,
+                modality: patch.modality,
+                period: patch.period,
+                label: patch.label,
+                period_label: patch.period_label,
+                valor: patch.valor,
+                repasse_professional: patch.repasse_professional,
+                repasse_clinic: patch.repasse_clinic,
+                taxa_extra: patch.taxa_extra,
+                taxa_extra_professional: patch.taxa_extra_professional,
+                taxa_extra_clinic: patch.taxa_extra_clinic,
+                observacoes: patch.observacoes
+              })
+              .eq('id', id)
+          )
+        );
+        const firstUpdErr = results.find((r) => r.error)?.error;
+        if (firstUpdErr) throw firstUpdErr;
+      }
+
+      const parts: string[] = [];
+      if (toInsert.length > 0) parts.push(`${toInsert.length} nova(s) inserida(s)`);
+      if (toUpdate.length > 0) {
+        parts.push(
+          `${toUpdate.length} regra(s) já existente(s) atualizada(s) (mesmo exame e período no parceiro receptor)`
+        );
+      }
+      const summary = parts.length > 0 ? parts.join('; ') : 'Nenhuma alteração necessária.';
+      alert(
+        `✅ Cópia de "${sourceName}" → "${targetName}" concluída.\n${summary}`
+      );
       setCopyFromScope('');
       setCopyToScope('');
       await fetchData();
@@ -1630,17 +1744,22 @@ export const OperationalDashboard = () => {
   const copyAvailableVets = availableVeterinarians;
 
   const duplicateRule = useMemo(() => {
-    const normalizeId = (id?: string | null) => (!id || id === 'default') ? '' : id;
-    
-    return priceRules.find(r => {
+    const keyForm = priceRuleDuplicateKey({
+      clinicId: priceForm.clinicId,
+      veterinarianId: priceForm.veterinarianId,
+      modality: priceForm.modality,
+      period: priceForm.period,
+    });
+    return priceRules.find((r) => {
       if (editingPrice && editingPrice.id === r.id) return false;
-      
-      const isSameClinic = normalizeId(r.clinicId) === normalizeId(priceForm.clinicId);
-      const isSameVet = normalizeId(r.veterinarianId) === normalizeId(priceForm.veterinarianId);
-      const isSameModality = r.modality === priceForm.modality;
-      const isSamePeriod = r.period === priceForm.period;
-      
-      return isSameClinic && isSameVet && isSameModality && isSamePeriod;
+      return (
+        priceRuleDuplicateKey({
+          clinicId: r.clinicId,
+          veterinarianId: r.veterinarianId,
+          modality: r.modality,
+          period: r.period,
+        }) === keyForm
+      );
     });
   }, [priceRules, priceForm.clinicId, priceForm.veterinarianId, priceForm.modality, priceForm.period, editingPrice]);
 
