@@ -36,6 +36,38 @@ const isGenericVetId = (vetId?: string | null) => {
 };
 
 /**
+ * Filtro unificado da tabela de preços (vet|id, clinic|id ou UUID legado sem prefixo).
+ * Nunca incluir regras "todos os veterinários" ao filtrar um parceiro específico (evita vazamento no assinante).
+ */
+const priceRuleMatchesPriceTablePartnerFilter = (
+  rule: Pick<PriceRule, 'clinicId' | 'veterinarianId'>,
+  filterValue: string
+): boolean => {
+  const raw = (filterValue || '').trim();
+  if (!raw) return true;
+
+  const vid = (rule.veterinarianId || '').trim();
+  const cid = (rule.clinicId || '').trim();
+
+  const pipe = raw.indexOf('|');
+  if (pipe >= 0) {
+    const prefix = raw.slice(0, pipe).toLowerCase().trim();
+    const target = raw.slice(pipe + 1).trim();
+    if (prefix === 'vet') {
+      if (isGenericVetId(rule.veterinarianId)) return false;
+      return vid === target;
+    }
+    if (prefix === 'clinic') {
+      if (isGenericClinicId(rule.clinicId)) return false;
+      return cid === target;
+    }
+  }
+
+  if (isGenericVetId(rule.veterinarianId) && isGenericClinicId(rule.clinicId)) return false;
+  return vid === raw || cid === raw;
+};
+
+/**
  * Novo exame — lista de modalidades/períodos: com clínica definida (select ou contexto clínica),
  * considera só regras **dessa** clínica. Sem clínica (ex.: vet independente), só regras sem clínica
  * específica (tabela geral do profissional). Assim o select de exames acompanha clínica + veterinário.
@@ -733,29 +765,34 @@ export const OperationalDashboard = () => {
         (isIndependentVetSubscriber ||
           (hasPriceSubPermissions ? !!(p?.manage_prices || p?.visualizar_precos) : !!p?.manage_prices)));
 
+    /** Sub-permissões de preço + flag legada manage_prices (painel SaaS só altera a legada). */
+    const priceRuleAllowed = (granular: boolean | undefined) =>
+      hasPriceSubPermissions ? !!(granular || p?.manage_prices) : !!p?.manage_prices;
+
     const canCreatePriceRule =
       !isPartnerView &&
       !isGuestPartner &&
       (level1 ||
         isIndependentVetSubscriber ||
-        (hasPriceSubPermissions ? !!p?.criar_regra_preco : !!p?.manage_prices));
+        priceRuleAllowed(p?.criar_regra_preco));
     const canEditPriceRule =
       !isPartnerView &&
       !isGuestPartner &&
       (level1 ||
         isIndependentVetSubscriber ||
-        (hasPriceSubPermissions ? !!p?.editar_regra_preco : !!p?.manage_prices));
+        priceRuleAllowed(p?.editar_regra_preco));
     const canDeletePriceRule =
       !isPartnerView &&
       !isGuestPartner &&
       (level1 ||
         isIndependentVetSubscriber ||
-        (hasPriceSubPermissions ? !!p?.excluir_regra_preco : !!p?.manage_prices));
+        priceRuleAllowed(p?.excluir_regra_preco));
     const canCopyPriceTable =
       !isPartnerView &&
       !isGuestPartner &&
       (level1 ||
-        (hasPriceSubPermissions ? !!p?.copiar_tabela_precos : !!p?.manage_prices));
+        isIndependentVetSubscriber ||
+        priceRuleAllowed(p?.copiar_tabela_precos));
 
     return {
       p,
@@ -2549,25 +2586,9 @@ export const OperationalDashboard = () => {
                       );
                     }
                     if (priceTableVetFilter) {
-                      rowsForTable = rowsForTable.filter((r) => {
-                        const vid = (r.veterinarianId || '').trim();
-                        const cid = (r.clinicId || '').trim();
-                        const f = priceTableVetFilter;
-                        if (f.startsWith('vet|')) {
-                          const target = f.slice(4).trim();
-                          /** Só regras daquele veterinário; não misturar regra "todos os vets". */
-                          if (isGenericVetId(r.veterinarianId)) return false;
-                          return vid === target;
-                        }
-                        if (f.startsWith('clinic|')) {
-                          const target = f.slice(7).trim();
-                          /** Só regras daquela clínica; não misturar "Todas as Clínicas" com parceiro escolhido. */
-                          if (isGenericClinicId(r.clinicId)) return false;
-                          return cid === target;
-                        }
-                        const isGenericVet = isGenericVetId(r.veterinarianId);
-                        return isGenericVet || vid === f.trim();
-                      });
+                      rowsForTable = rowsForTable.filter((r) =>
+                        priceRuleMatchesPriceTablePartnerFilter(r, priceTableVetFilter)
+                      );
                     }
                     if (priceTableExamFilter) {
                       try {
