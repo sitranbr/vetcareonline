@@ -35,6 +35,19 @@ const isGenericVetId = (vetId?: string | null) => {
   return v === '' || v === 'default';
 };
 
+/**
+ * Novo exame — lista de modalidades/períodos: com clínica definida (select ou contexto clínica),
+ * considera só regras **dessa** clínica. Sem clínica (ex.: vet independente), só regras sem clínica
+ * específica (tabela geral do profissional). Assim o select de exames acompanha clínica + veterinário.
+ */
+const clinicMatchesExamForm = (ruleClinicId: string | undefined | null, cleanEffectiveId: string) => {
+  const ce = (cleanEffectiveId || '').trim();
+  if (!ce) {
+    return isGenericClinicId(ruleClinicId);
+  }
+  return (ruleClinicId ?? '').trim() === ce;
+};
+
 /** Mensagem legível para falhas do PostgREST / Supabase (inclui NOT NULL em clinic_id). */
 const formatExamSaveError = (err: unknown): string => {
   const o = err && typeof err === 'object' ? (err as Record<string, unknown>) : null;
@@ -861,10 +874,9 @@ export const OperationalDashboard = () => {
     const selectedPeriod = formData.period;
 
     const clinicVetRules = priceRules.filter(r => {
-      const ruleClinicId = (r.clinicId || '').trim();
       const ruleVetId = (r.veterinarianId || '').trim();
 
-      const clinicMatch = !ruleClinicId || ruleClinicId === 'default' || ruleClinicId === cleanEffectiveId;
+      const clinicMatch = clinicMatchesExamForm(r.clinicId, cleanEffectiveId);
       const vetMatch = !ruleVetId || ruleVetId === 'default' || ruleVetId === safeVetId;
 
       return clinicMatch && vetMatch;
@@ -922,12 +934,11 @@ export const OperationalDashboard = () => {
     const safeVetId = (formData.veterinarianId || '').trim();
 
     const relevantRules = priceRules.filter(r => {
-      const ruleClinicId = (r.clinicId || '').trim();
       const ruleVetId = (r.veterinarianId || '').trim();
-      
-      const clinicMatch = !ruleClinicId || ruleClinicId === 'default' || ruleClinicId === cleanEffectiveId;
+
+      const clinicMatch = clinicMatchesExamForm(r.clinicId, cleanEffectiveId);
       const vetMatch = !ruleVetId || ruleVetId === 'default' || ruleVetId === safeVetId;
-      
+
       return clinicMatch && vetMatch;
     });
 
@@ -964,9 +975,8 @@ export const OperationalDashboard = () => {
     const safeVetId = (formData.veterinarianId || loggedUserEntity?.id || '').trim();
     if (!safeVetId) return false;
     const relevant = priceRules.filter(r => {
-      const ruleClinicId = (r.clinicId || '').trim();
       const ruleVetId = (r.veterinarianId || '').trim();
-      const clinicMatch = !ruleClinicId || ruleClinicId === 'default' || ruleClinicId === cleanEffectiveId;
+      const clinicMatch = clinicMatchesExamForm(r.clinicId, cleanEffectiveId);
       const vetMatch = !ruleVetId || ruleVetId === 'default' || ruleVetId === safeVetId;
       return clinicMatch && vetMatch;
     });
