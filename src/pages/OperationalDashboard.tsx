@@ -24,6 +24,17 @@ const getTodayString = () => new Date().toISOString().split('T')[0];
 /** Itens por página na aba Exames Registrados (lista carregada inteira; paginação só na UI). */
 const EXAM_LIST_PAGE_SIZE = 20;
 
+/** Regra sem clínica específica (vale para qualquer clínica no cálculo; não deve misturar ao filtrar uma clínica). */
+const isGenericClinicId = (clinicId?: string | null) => {
+  const c = (clinicId ?? '').trim();
+  return c === '' || c === 'default';
+};
+
+const isGenericVetId = (vetId?: string | null) => {
+  const v = (vetId ?? '').trim();
+  return v === '' || v === 'default';
+};
+
 /** Mensagem legível para falhas do PostgREST / Supabase (inclui NOT NULL em clinic_id). */
 const formatExamSaveError = (err: unknown): string => {
   const o = err && typeof err === 'object' ? (err as Record<string, unknown>) : null;
@@ -2432,8 +2443,9 @@ export const OperationalDashboard = () => {
                   {(() => {
                     const visibleRules = priceRules.filter(rule => {
                         if (selectedClinicFilter) {
-                          const isGenericClinic = !rule.clinicId || rule.clinicId === '' || rule.clinicId === 'default';
-                          if (rule.clinicId !== selectedClinicFilter && !isGenericClinic) return false;
+                          /** Só regras explicitamente cadastradas para essa clínica (sem incluir "Todas as Clínicas"). */
+                          if (isGenericClinicId(rule.clinicId)) return false;
+                          if ((rule.clinicId || '').trim() !== selectedClinicFilter.trim()) return false;
                         }
 
                         const isMainSubscriber = !user?.ownerId || user.ownerId === user.id;
@@ -2520,18 +2532,21 @@ export const OperationalDashboard = () => {
                       rowsForTable = rowsForTable.filter((r) => {
                         const vid = (r.veterinarianId || '').trim();
                         const cid = (r.clinicId || '').trim();
-                        const isGenericVet = !vid || vid === 'default';
-                        const isGenericClinic = !cid || cid === 'default';
                         const f = priceTableVetFilter;
                         if (f.startsWith('vet|')) {
-                          const target = f.slice(4);
-                          return isGenericVet || vid === target;
+                          const target = f.slice(4).trim();
+                          /** Só regras daquele veterinário; não misturar regra "todos os vets". */
+                          if (isGenericVetId(r.veterinarianId)) return false;
+                          return vid === target;
                         }
                         if (f.startsWith('clinic|')) {
-                          const target = f.slice(7);
-                          return isGenericClinic || cid === target;
+                          const target = f.slice(7).trim();
+                          /** Só regras daquela clínica; não misturar "Todas as Clínicas" com parceiro escolhido. */
+                          if (isGenericClinicId(r.clinicId)) return false;
+                          return cid === target;
                         }
-                        return isGenericVet || vid === f;
+                        const isGenericVet = isGenericVetId(r.veterinarianId);
+                        return isGenericVet || vid === f.trim();
                       });
                     }
                     if (priceTableExamFilter) {
@@ -2543,6 +2558,15 @@ export const OperationalDashboard = () => {
                       } catch {
                         /* valor inválido: ignora filtro de exame */
                       }
+                    }
+
+                    {
+                      const seen = new Set<string>();
+                      rowsForTable = rowsForTable.filter((r) => {
+                        if (seen.has(r.id)) return false;
+                        seen.add(r.id);
+                        return true;
+                      });
                     }
 
                     const periodSortRank: Record<string, number> = {

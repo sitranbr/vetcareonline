@@ -46,24 +46,34 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
       // Clínicas, Veterinários E Recepção têm personalização (White Label)
       if (user.role === 'vet' || user.role === 'clinic' || user.role === 'reception' || user.level === 5) {
         try {
-          // APENAS a Recepção (Equipe Interna) deve herdar as configurações do criador (ownerId)
-          // Clínicas e Vets parceiros devem carregar seus próprios dados, mesmo sendo convidados
+          /**
+           * Identidade visual (logo, dados de cabeçalho): quem opera “em nome” do assinante deve
+           * usar as configurações do criador (mesma linha em veterinarians/clinics do owner).
+           * - Recepção / equipe interna: herdam o owner.
+           * - Parceiro convidado (vet/clínica com owner_id do assinante): mesmo branding do assinante.
+           * Assinante raiz (sem owner ou owner = próprio id) continua carregando o próprio registro.
+           */
           const isReception = user.role === 'reception' || user.level === 5;
-          
+          const isGuestPartner =
+            !!user.ownerId &&
+            user.ownerId !== user.id &&
+            (user.role === 'vet' || user.role === 'clinic');
+
           let targetUserId = user.id;
           let targetTable = user.role === 'vet' ? 'veterinarians' : 'clinics';
-          
-          if (isReception && user.ownerId) {
-            // Para recepção, precisa buscar o role do criador para saber qual tabela usar
+
+          const shouldInheritOwnerBranding =
+            (isReception && !!user.ownerId) || isGuestPartner;
+
+          if (shouldInheritOwnerBranding && user.ownerId) {
             const { data: ownerProfile } = await supabase
               .from('profiles')
               .select('role')
               .eq('id', user.ownerId)
               .limit(1);
-            
+
             if (ownerProfile && ownerProfile.length > 0) {
               targetUserId = user.ownerId;
-              // Usa a tabela correspondente ao role do criador
               targetTable = ownerProfile[0].role === 'vet' ? 'veterinarians' : 'clinics';
             } else {
               console.warn('⚠️ Perfil do criador não encontrado, usando configurações padrão');
