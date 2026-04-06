@@ -354,6 +354,47 @@ export const OperationalDashboard = () => {
     });
   }, [clinics, extraClinics, guestClinics, ownerClinic, loggedUserEntity, currentTenant, veterinarians, user]);
 
+  /**
+   * Filtro "Todas as Clínicas" na tabela de preços: inclui parceiros já vinculados e qualquer clínica
+   * que já apareça em `price_rules` (evita clínica parceira nova não listar até o vínculo partners atualizar).
+   */
+  const clinicsForPriceTableFilter = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { id: string; name: string; profileId?: string }[] = [];
+    const push = (c: { id: string; name: string; profileId?: string }) => {
+      if (!c?.id || seen.has(c.id)) return;
+      seen.add(c.id);
+      out.push(c);
+    };
+    availableClinicsForVet.forEach(push);
+    priceRules.forEach((r) => {
+      const cid = (r.clinicId || '').trim();
+      if (!cid || cid === 'default') return;
+      const found = clinics.find((c) => c.id === cid);
+      if (found) push({ id: found.id, name: found.name, profileId: found.profileId });
+    });
+    return out.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
+  }, [availableClinicsForVet, priceRules, clinics]);
+
+  /** Clínicas + veterinários parceiros para o filtro unificado da tabela de preços (valor: vet|id ou clinic|id). */
+  const priceTablePartnerFilterOptions = useMemo(() => {
+    const opts: { value: string; label: string }[] = [];
+    const seen = new Set<string>();
+    availableVeterinarians.forEach((v) => {
+      const val = `vet|${v.id}`;
+      if (seen.has(val)) return;
+      seen.add(val);
+      opts.push({ value: val, label: `${v.name} (veterinário)` });
+    });
+    clinicsForPriceTableFilter.forEach((c) => {
+      const val = `clinic|${c.id}`;
+      if (seen.has(val)) return;
+      seen.add(val);
+      opts.push({ value: val, label: `${c.name} (clínica)` });
+    });
+    return opts.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR', { sensitivity: 'base' }));
+  }, [availableVeterinarians, clinicsForPriceTableFilter]);
+
   useEffect(() => {
     if (activeTab === 'form' && !editingExamId && availableClinicsForVet.length > 0 && !isIndependentVetSubscriber) {
       setFormData(prev => {
@@ -479,6 +520,15 @@ export const OperationalDashboard = () => {
 
       const pricePromises = [safeFetch(supabase.from('price_rules').select('*'))];
 
+      /** Assinante raiz (vet/clínica): o select direto + RLS pode omitir regras ligadas a clínica/vet parceiro; RPC agrega o tenant. */
+      const isMainSubscriberRoot =
+        !!targetUserId &&
+        (!user?.ownerId || user.ownerId === user.id) &&
+        (user?.role === 'vet' || user?.role === 'clinic');
+      if (isMainSubscriberRoot) {
+        pricePromises.push(safeFetch(supabase.rpc('get_all_prices_bypass_rls', { p_user_id: targetUserId })));
+      }
+
       if ((user?.role === 'reception' || user?.level === 5) || (user?.ownerId && user.ownerId !== user.id)) {
         pricePromises.push(safeFetch(supabase.rpc('get_price_rules_for_reception')));
         if (targetUserId) {
@@ -510,11 +560,10 @@ export const OperationalDashboard = () => {
         }
       });
 
-      const uniquePrices = new Map();
-      pricesData.forEach(p => {
-        if (!p.owner_id || p.owner_id === targetUserId) {
-          uniquePrices.set(p.id, p);
-        }
+      const uniquePrices = new Map<string, (typeof pricesData)[number]>();
+      pricesData.forEach((p) => {
+        const id = (p as { id?: string })?.id;
+        if (id) uniquePrices.set(id, p);
       });
       pricesData = Array.from(uniquePrices.values());
 
@@ -2222,28 +2271,31 @@ export const OperationalDashboard = () => {
                   Tabela de Preços
                 </h2>
                 <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
-                  {(loggedUserEntity?.type === 'vet' || currentTenant?.type === 'vet') && availableClinicsForVet.length > 0 && (
+                  {(loggedUserEntity?.type === 'vet' || currentTenant?.type === 'vet') && clinicsForPriceTableFilter.length > 0 && (
                     <>
                       {(() => {
                         const isGuest = user?.ownerId && user.ownerId !== user.id;
-                        if (isGuest && availableClinicsForVet.length === 1) {
+                        if (isGuest && clinicsForPriceTableFilter.length === 1) {
                           return (
                             <div className="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 text-gray-600">
-                              {availableClinicsForVet[0]?.name || 'Clínica'}
+                              {clinicsForPriceTableFilter[0]?.name || 'Clínica'}
                             </div>
                           );
                         }
                         return (
-                          <select
-                            value={selectedClinicFilter}
-                            onChange={(e) => setSelectedClinicFilter(e.target.value)}
-                            className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-petcare-DEFAULT focus:border-petcare-DEFAULT bg-white"
-                          >
-                            <option value="">Todas as Clínicas</option>
-                            {availableClinicsForVet.map(c => (
-                              <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                          </select>
+                          <div className="flex flex-col gap-1">
+                            <select
+                              value={selectedClinicFilter}
+                              onChange={(e) => setSelectedClinicFilter(e.target.value)}
+                              className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-petcare-DEFAULT focus:border-petcare-DEFAULT bg-white"
+                              aria-label="Filtrar regras por clínica parceira"
+                            >
+                              <option value="">Todas as Clínicas</option>
+                              {clinicsForPriceTableFilter.map(c => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                              ))}
+                            </select>
+                          </div>
                         );
                       })()}
                     </>
@@ -2278,21 +2330,27 @@ export const OperationalDashboard = () => {
                     <option value="feriado">{getPeriodLabel('feriado')}</option>
                   </select>
                 </div>
-                {availableVeterinarians.length > 1 && (
-                  <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-initial sm:min-w-[220px]">
-                    <Stethoscope className="w-4 h-4 text-gray-500 shrink-0" aria-hidden />
-                    <label htmlFor="price-table-vet-filter" className="sr-only">Filtrar por veterinário ou parceiro</label>
-                    <select
-                      id="price-table-vet-filter"
-                      value={priceTableVetFilter}
-                      onChange={(e) => setPriceTableVetFilter(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:ring-2 focus:ring-petcare-light/50 outline-none"
-                    >
-                      <option value="">Todos os veterinários / parceiros</option>
-                      {availableVeterinarians.map((v) => (
-                        <option key={v.id} value={v.id}>{v.name}</option>
-                      ))}
-                    </select>
+                {priceTablePartnerFilterOptions.length > 1 && (
+                  <div className="flex flex-col gap-1 min-w-0 flex-1 sm:flex-initial sm:min-w-[240px]">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Users className="w-4 h-4 text-gray-500 shrink-0" aria-hidden />
+                      <label htmlFor="price-table-vet-filter" className="sr-only">
+                        Filtrar por clínica ou veterinário parceiro
+                      </label>
+                      <select
+                        id="price-table-vet-filter"
+                        value={priceTableVetFilter}
+                        onChange={(e) => setPriceTableVetFilter(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:ring-2 focus:ring-petcare-light/50 outline-none"
+                      >
+                        <option value="">Todas as clínicas e veterinários</option>
+                        {priceTablePartnerFilterOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 )}
                 <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-initial sm:min-w-[200px]">
@@ -2418,8 +2476,19 @@ export const OperationalDashboard = () => {
                     if (priceTableVetFilter) {
                       rowsForTable = rowsForTable.filter((r) => {
                         const vid = (r.veterinarianId || '').trim();
+                        const cid = (r.clinicId || '').trim();
                         const isGenericVet = !vid || vid === 'default';
-                        return isGenericVet || vid === priceTableVetFilter;
+                        const isGenericClinic = !cid || cid === 'default';
+                        const f = priceTableVetFilter;
+                        if (f.startsWith('vet|')) {
+                          const target = f.slice(4);
+                          return isGenericVet || vid === target;
+                        }
+                        if (f.startsWith('clinic|')) {
+                          const target = f.slice(7);
+                          return isGenericClinic || cid === target;
+                        }
+                        return isGenericVet || vid === f;
                       });
                     }
                     if (priceTableExamFilter) {
