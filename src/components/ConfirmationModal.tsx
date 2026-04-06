@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, type ReactNode } from 'react';
 import { AlertTriangle, Lock, AlertCircle } from 'lucide-react';
 
 interface ConfirmationModalProps {
@@ -6,7 +6,7 @@ interface ConfirmationModalProps {
   onClose: () => void;
   onConfirm: (password?: string) => void;
   title: string;
-  message: string;
+  message: string | ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: 'danger' | 'warning';
@@ -42,10 +42,13 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
     // Não limpamos a senha aqui imediatamente para permitir correção caso falhe
   };
 
+  const isPlainTextMessage = typeof message === 'string';
+  const panelMaxClass = isPlainTextMessage ? 'max-w-sm' : 'max-w-lg';
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity duration-300">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100 border border-gray-100">
-        <div className="p-6 text-center">
+      <div className={`bg-white rounded-2xl shadow-2xl w-full ${panelMaxClass} overflow-hidden transform transition-all scale-100 border border-gray-100`}>
+        <div className={`p-6 ${isPlainTextMessage ? 'text-center' : 'text-left'}`}>
           <div className={`mx-auto flex items-center justify-center h-14 w-14 rounded-full mb-5 ${
             variant === 'danger' ? 'bg-red-50' : 'bg-amber-50'
           }`}>
@@ -54,8 +57,12 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
             }`} />
           </div>
           
-          <h3 className="text-xl font-bold text-gray-900 mb-2">{title}</h3>
-          <p className="text-sm text-gray-500 mb-6 leading-relaxed">{message}</p>
+          <h3 className={`text-xl font-bold text-gray-900 mb-2 ${isPlainTextMessage ? '' : 'text-center'}`}>{title}</h3>
+          {isPlainTextMessage ? (
+            <p className="text-sm text-gray-500 mb-6 leading-relaxed">{message}</p>
+          ) : (
+            <div className="text-sm text-gray-600 mb-6 leading-relaxed">{message}</div>
+          )}
           
           {requirePassword && (
             <div className={`mb-6 text-left bg-gray-50 p-3 rounded-xl border transition-colors ${

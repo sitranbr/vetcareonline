@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
@@ -23,6 +23,21 @@ const getTodayString = () => new Date().toISOString().split('T')[0];
 
 /** Itens por página na aba Exames Registrados (lista carregada inteira; paginação só na UI). */
 const EXAM_LIST_PAGE_SIZE = 20;
+
+/** Pré-visualização de linha ao copiar tabela de preços (modal de confirmação). */
+const formatPriceRuleCopyPreviewLine = (r: {
+  label?: string | null;
+  modality?: string | null;
+  period?: string | null;
+  period_label?: string | null;
+}) => {
+  const exam = (r.label || r.modality || 'Exame').trim();
+  const pl = (r.period_label || '').trim();
+  const periodText =
+    pl ||
+    (r.period === 'all' ? 'Todos os períodos' : getPeriodLabel((r.period as Period) || 'comercial'));
+  return { exam, periodText };
+};
 
 /** Regra sem clínica específica (vale para qualquer clínica no cálculo; não deve misturar ao filtrar uma clínica). */
 const isGenericClinicId = (clinicId?: string | null) => {
@@ -134,7 +149,7 @@ export const OperationalDashboard = () => {
     type: 'exam' | 'price' | 'report' | 'copy_prices' | null; 
     id: string | null; 
     title: string; 
-    message: string; 
+    message: string | ReactNode; 
     requirePassword?: boolean; 
     errorMessage?: string;
     variant?: 'danger' | 'warning';
@@ -2842,12 +2857,47 @@ export const OperationalDashboard = () => {
                           .eq(targetType === 'clinic' ? 'clinic_id' : 'veterinarian_id', targetId);
 
                         if (existingRules && existingRules.length > 0) {
+                          const sortedPreview = [...sourceRules].sort((a, b) => {
+                            const cmp = (a.label || a.modality || '').localeCompare(
+                              b.label || b.modality || '',
+                              'pt-BR',
+                              { sensitivity: 'base' }
+                            );
+                            if (cmp !== 0) return cmp;
+                            return String(a.period || '').localeCompare(String(b.period || ''));
+                          });
                           setConfirmationState({
                             isOpen: true,
                             type: 'copy_prices',
                             id: null,
                             title: 'Atenção: Regras Existentes',
-                            message: `O parceiro "${targetName}" já possui ${existingRules.length} regra(s) de preço.\n\nCopiar as regras de "${sourceName}" vai adicionar ${sourceRules.length} nova(s) regra(s).\n\nDeseja continuar?`,
+                            message: (
+                              <div className="space-y-3 text-left">
+                                <p>
+                                  O parceiro <strong className="text-gray-800">{targetName}</strong> já possui{' '}
+                                  <strong>{existingRules.length}</strong> regra(s) de preço.
+                                </p>
+                                <p>
+                                  Copiar as regras de <strong className="text-gray-800">{sourceName}</strong> vai
+                                  adicionar <strong>{sourceRules.length}</strong> nova(s) regra(s):
+                                </p>
+                                <ul className="max-h-52 overflow-y-auto rounded-lg border border-amber-200/80 bg-amber-50/50 divide-y divide-amber-100/90 text-sm">
+                                  {sortedPreview.map((r, idx) => {
+                                    const { exam, periodText } = formatPriceRuleCopyPreviewLine(r);
+                                    return (
+                                      <li
+                                        key={(r as { id?: string }).id || `copy-preview-${idx}`}
+                                        className="px-3 py-2.5 flex flex-col gap-0.5"
+                                      >
+                                        <span className="font-medium text-gray-900">{exam}</span>
+                                        <span className="text-xs text-gray-600">Período: {periodText}</span>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                                <p className="text-gray-600">Deseja continuar?</p>
+                              </div>
+                            ),
                             variant: 'warning',
                             payload: { sourceRules, donorType, targetType, targetId, sourceName, targetName }
                           });
