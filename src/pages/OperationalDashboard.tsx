@@ -607,6 +607,16 @@ export const OperationalDashboard = () => {
       });
       pricesData = Array.from(uniquePrices.values());
 
+      /** Isolamento por tenant: regras só do assinante (owner_id = perfil raiz do SaaS). RPCs podem retornar linhas alheias. */
+      if (user && user.level !== 1) {
+        const tenantRootId =
+          user.ownerId && user.ownerId !== user.id ? user.ownerId : user.id;
+        pricesData = pricesData.filter((p: { owner_id?: string | null }) => {
+          const oid = (p.owner_id ?? '').toString().trim();
+          return oid === tenantRootId;
+        });
+      }
+
       if (pricesData && pricesData.length > 0) {
         setPriceRules(pricesData.map(p => ({
           id: p.id, 

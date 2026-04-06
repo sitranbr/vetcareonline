@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { Veterinarian, Clinic } from '../types';
 import { supabase } from '../lib/supabase';
+import { useAuth } from './AuthContext';
 
 interface RegistryContextType {
   veterinarians: Veterinarian[];
@@ -20,48 +21,97 @@ interface RegistryContextType {
 
 const RegistryContext = createContext<RegistryContextType | undefined>(undefined);
 
+const mapVetRow = (v: Record<string, unknown>): Veterinarian => ({
+  id: String(v.id),
+  name: String(v.name ?? ''),
+  crmv: String(v.crmv ?? ''),
+  document: String(v.crmv ?? ''),
+  address: v.address as string | undefined,
+  phone: v.phone as string | undefined,
+  email: v.email as string | undefined,
+  logoUrl: v.logo_url as string | undefined,
+  isDefault: v.is_default as boolean | undefined,
+  linkedClinicIds: (v.linked_clinic_ids as string[]) || [],
+  profileId: v.profile_id as string | null | undefined,
+});
+
+const mapClinicRow = (c: Record<string, unknown>): Clinic => ({
+  id: String(c.id),
+  name: String(c.name ?? ''),
+  document: c.document as string | undefined,
+  address: c.address as string | undefined,
+  phone: c.phone as string | undefined,
+  email: c.email as string | undefined,
+  logoUrl: c.logo_url as string | undefined,
+  isDefault: c.is_default as boolean | undefined,
+  profileId: c.profile_id as string | null | undefined,
+  responsibleName: c.responsible_name as string | undefined,
+});
+
 export const RegistryProvider = ({ children }: { children: ReactNode }) => {
+  const { user } = useAuth();
   const [veterinarians, setVeterinarians] = useState<Veterinarian[]>([]);
   const [clinics, setClinics] = useState<Clinic[]>([]);
 
-  const fetchData = async () => {
-    const { data: vets } = await supabase.from('veterinarians').select('*');
-    if (vets) {
-      setVeterinarians(vets.map(v => ({
-        id: v.id,
-        name: v.name,
-        crmv: v.crmv,
-        document: v.crmv,
-        address: v.address,
-        phone: v.phone,
-        email: v.email,
-        logoUrl: v.logo_url,
-        isDefault: v.is_default,
-        linkedClinicIds: v.linked_clinic_ids || [],
-        profileId: v.profile_id
-      })));
+  /**
+   * Isolamento por tenant: só clínicas/veterinários cujo profile_id pertence ao assinante
+   * (perfil raiz + parceiros em `partners` + perfis com owner_id = assinante).
+   * Super Admin (nível 1) continua vendo todos para gestão da plataforma.
+   */
+  const loadRegistry = useCallback(async () => {
+    if (!user) {
+      setVeterinarians([]);
+      setClinics([]);
+      return;
     }
 
-    const { data: clis } = await supabase.from('clinics').select('*');
-    if (clis) {
-      setClinics(clis.map(c => ({
-        id: c.id,
-        name: c.name,
-        document: c.document,
-        address: c.address,
-        phone: c.phone,
-        email: c.email,
-        logoUrl: c.logo_url,
-        isDefault: c.is_default,
-        profileId: c.profile_id,
-        responsibleName: c.responsible_name
-      })));
+    if (user.level === 1) {
+      const { data: vets } = await supabase.from('veterinarians').select('*');
+      if (vets) setVeterinarians(vets.map((v) => mapVetRow(v as Record<string, unknown>)));
+      const { data: clis } = await supabase.from('clinics').select('*');
+      if (clis) setClinics(clis.map((c) => mapClinicRow(c as Record<string, unknown>)));
+      return;
     }
-  };
+
+    const tenantRootId = user.ownerId && user.ownerId !== user.id ? user.ownerId : user.id;
+
+    const { data: rootProfile } = await supabase
+      .from('profiles')
+      .select('partners')
+      .eq('id', tenantRootId)
+      .maybeSingle();
+
+    const partnerIds = (rootProfile?.partners as string[]) || [];
+
+    const { data: ownedProfiles } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('owner_id', tenantRootId);
+
+    const guestIds = (ownedProfiles || []).map((p) => p.id);
+
+    const allowedProfileIds = Array.from(new Set([tenantRootId, ...partnerIds, ...guestIds]));
+
+    const { data: vets } = await supabase
+      .from('veterinarians')
+      .select('*')
+      .in('profile_id', allowedProfileIds);
+
+    const { data: clis } = await supabase
+      .from('clinics')
+      .select('*')
+      .in('profile_id', allowedProfileIds);
+
+    if (vets) setVeterinarians(vets.map((v) => mapVetRow(v as Record<string, unknown>)));
+    else setVeterinarians([]);
+
+    if (clis) setClinics(clis.map((c) => mapClinicRow(c as Record<string, unknown>)));
+    else setClinics([]);
+  }, [user]);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    loadRegistry();
+  }, [loadRegistry]);
 
   const addVeterinarian = async (vet: Omit<Veterinarian, 'id'>, profileId?: string | null) => {
     try {
@@ -182,7 +232,7 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
       if (error) throw error;
 
       if (data.success) {
-        await fetchData(); 
+        await loadRegistry();
         return { success: true, name: data.name };
       } else {
         return { success: false, message: data.message };
@@ -240,7 +290,7 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const refreshRegistry = async () => {
-    await fetchData();
+    await loadRegistry();
   };
 
   const unlinkPartner = async (partnerId: string, myId: string) => {
@@ -289,7 +339,7 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
           .eq('id', partnerId);
       }
 
-      await fetchData();
+      await loadRegistry();
       return { success: true, message: "Parceiro desvinculado com sucesso." };
     } catch (err: any) {
       console.error("Erro ao desvincular parceiro:", err);
