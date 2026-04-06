@@ -238,6 +238,12 @@ export const OperationalDashboard = () => {
     return currentTenant && !currentTenant.isMe;
   }, [currentTenant]);
 
+  /** Conta de parceiro convidado (veterinário/clínica vinculados ao assinante via owner_id). */
+  const isGuestPartner = useMemo(
+    () => !!(user?.ownerId && user.ownerId !== user.id),
+    [user?.ownerId, user?.id]
+  );
+
   /** Assinante veterinário raiz: conta própria, sem vínculo obrigatório a clínica/outro vet. */
   const isIndependentVetSubscriber = useMemo(() => {
     return (
@@ -454,11 +460,17 @@ export const OperationalDashboard = () => {
       }
     } 
     else if (currentTenant.type === 'vet') {
-      const idsArray = Array.from(vetIds);
-      if (idsArray.length > 0) {
-        query = query.in('veterinarian_id', idsArray);
+      const guestPartner = user?.ownerId && user.ownerId !== user.id;
+      if (guestPartner && loggedUserEntity?.type === 'vet' && loggedUserEntity.id) {
+        /** Parceiro veterinário: só exames em que ele é o executor (isolamento). */
+        query = query.eq('veterinarian_id', loggedUserEntity.id);
       } else {
-        query = query.eq('veterinarian_id', currentTenant.id);
+        const idsArray = Array.from(vetIds);
+        if (idsArray.length > 0) {
+          query = query.in('veterinarian_id', idsArray);
+        } else {
+          query = query.eq('veterinarian_id', currentTenant.id);
+        }
       }
     } else {
       /**
@@ -473,7 +485,11 @@ export const OperationalDashboard = () => {
         : [];
       const idsArray = Array.from(clinicIds);
 
-      if (isPartnerView && loggedUserEntity?.type === 'vet') {
+      const guestPartner = user?.ownerId && user.ownerId !== user.id;
+      if (guestPartner && loggedUserEntity?.type === 'clinic' && loggedUserEntity.id) {
+        /** Parceiro clínica: só exames realizados nesta clínica. */
+        query = query.eq('clinic_id', loggedUserEntity.id);
+      } else if (isPartnerView && loggedUserEntity?.type === 'vet') {
         const myVetIds = new Set<string>();
         if (loggedUserEntity.id) myVetIds.add(loggedUserEntity.id);
         if (user?.id) myVetIds.add(user.id);
@@ -663,7 +679,11 @@ export const OperationalDashboard = () => {
     /** Aba do formulário: novo exame ou edição de exame existente. */
     const canViewExamFormTab = canCreateExam || canEditExamDetails;
 
-    const canEditReports = level1 || !!p?.edit_reports;
+    /** Laudos: apenas veterinário; parceiro clínica não emite laudo (regra de negócio). */
+    const canEditReports =
+      level1 ||
+      (!!(p?.edit_reports) &&
+        !(isGuestPartner && loggedUserEntity?.type === 'clinic'));
 
     const canPrintExam =
       level1 || (hasReportSubPermissions ? !!p?.gerar_pdf_exame : !!p?.export_reports);
@@ -675,26 +695,31 @@ export const OperationalDashboard = () => {
     const canAccessPriceTab =
       level1 ||
       (!isPartnerView &&
+        !isGuestPartner &&
         (isIndependentVetSubscriber ||
           (hasPriceSubPermissions ? !!(p?.manage_prices || p?.visualizar_precos) : !!p?.manage_prices)));
 
     const canCreatePriceRule =
       !isPartnerView &&
+      !isGuestPartner &&
       (level1 ||
         isIndependentVetSubscriber ||
         (hasPriceSubPermissions ? !!p?.criar_regra_preco : !!p?.manage_prices));
     const canEditPriceRule =
       !isPartnerView &&
+      !isGuestPartner &&
       (level1 ||
         isIndependentVetSubscriber ||
         (hasPriceSubPermissions ? !!p?.editar_regra_preco : !!p?.manage_prices));
     const canDeletePriceRule =
       !isPartnerView &&
+      !isGuestPartner &&
       (level1 ||
         isIndependentVetSubscriber ||
         (hasPriceSubPermissions ? !!p?.excluir_regra_preco : !!p?.manage_prices));
     const canCopyPriceTable =
       !isPartnerView &&
+      !isGuestPartner &&
       (level1 ||
         (hasPriceSubPermissions ? !!p?.copiar_tabela_precos : !!p?.manage_prices));
 
@@ -721,7 +746,7 @@ export const OperationalDashboard = () => {
       canDeletePriceRule,
       canCopyPriceTable,
     };
-  }, [user, isPartnerView, isIndependentVetSubscriber]);
+  }, [user, isPartnerView, isGuestPartner, isIndependentVetSubscriber, loggedUserEntity?.type]);
 
   const {
     hasDeleteSubPermissions,
@@ -841,11 +866,18 @@ export const OperationalDashboard = () => {
       return periodOk && priced;
     });
 
+    /** Se não há preço no período atual, mas há regras com valor para clínica+veterinário em outro período, lista essas modalidades (evita cair na lista genérica e ignora a tabela do parceiro). */
+    const pricedRulesAnyPeriod = clinicVetRules.filter(
+      (r) => r.valor != null && Number(r.valor) > 0
+    );
+    const rulesForExamDropdown =
+      periodPricedRules.length > 0 ? periodPricedRules : pricedRulesAnyPeriod;
+
     const blockModalityFallbacks =
       isIndependentVetSubscriber && clinicVetRules.length === 0;
 
-    if (periodPricedRules.length > 0) {
-      periodPricedRules.forEach(r => {
+    if (rulesForExamDropdown.length > 0) {
+      rulesForExamDropdown.forEach(r => {
         if (r.modality === 'OUTROS') {
           const val = `OUTROS|${r.label}`;
           if (!examsMap.has(val)) {
@@ -857,7 +889,7 @@ export const OperationalDashboard = () => {
           }
         }
       });
-    } else if (priceRules.length === 0 && !blockModalityFallbacks) {
+    } else if (priceRules.length === 0 && !blockModalityFallbacks && clinicVetRules.length === 0) {
       const baseModalities = [
         { value: 'USG', label: 'Ultrassom', isCustom: false },
         { value: 'RX', label: 'Raio-X', isCustom: false },
@@ -976,6 +1008,17 @@ export const OperationalDashboard = () => {
       }
     } else if (!canCreateExam) {
       alert('Sem permissão para cadastrar novos exames.');
+      return;
+    }
+
+    if (
+      isGuestPartner &&
+      loggedUserEntity?.type === 'clinic' &&
+      !(formData.veterinarianId || '').trim()
+    ) {
+      alert(
+        'Selecione o veterinário executor do exame. Uma clínica parceira precisa de pelo menos um veterinário vinculado para registrar atendimentos.'
+      );
       return;
     }
 

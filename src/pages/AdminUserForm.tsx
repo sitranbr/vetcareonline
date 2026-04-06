@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useRegistry } from '../context/RegistryContext';
@@ -35,7 +35,9 @@ export const AdminUserForm = () => {
 
   const [memberType, setMemberType] = useState<MemberType>('internal');
   const [partnerRole, setPartnerRole] = useState<PartnerRole>('vet');
-  const [selectedAccessLevel, setSelectedAccessLevel] = useState<'basic' | 'operational' | 'managerial' | 'admin' | 'custom'>('basic');
+  const [selectedAccessLevel, setSelectedAccessLevel] = useState<
+    'basic' | 'operational' | 'managerial' | 'admin' | 'custom' | 'partnerVet' | 'partnerClinic'
+  >('basic');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -206,8 +208,64 @@ export const AdminUserForm = () => {
       name: 'Personalizado',
       description: 'Configure as permissões manualmente',
       permissions: defaultPermissions
+    },
+    /** Padrão para parceiro veterinário: operação e laudos; sem gestão de tabela de preços. */
+    partnerVet: {
+      name: 'Parceiro — Veterinário',
+      description: 'Resumo operacional, exames, laudos e relatórios; precificação definida pelo assinante.',
+      permissions: {
+        ...defaultPermissions,
+        edit_reports: true,
+        view_financials: true,
+        export_reports: true,
+        visualizar_exames: true,
+        editar_resultados: true,
+        criar_exame: true,
+        duplicar_exame: true,
+        gerar_pdf_exame: true,
+        aprovar_laudo: true,
+        visualizar_valores: true,
+        visualizar_totais: true,
+        visualizar_repasses: true,
+        visualizar_relatorios_financeiros: true,
+        gerar_pdf_relatorio: true,
+        exportar_dados_exames: true,
+        visualizar_estatisticas: true,
+      }
+    },
+    /** Padrão para parceiro clínica: sem emissão de laudo; sem tabela de preços. */
+    partnerClinic: {
+      name: 'Parceiro — Clínica',
+      description: 'Resumo operacional, exames, impressão e exclusão dos próprios; sem laudo veterinário.',
+      permissions: {
+        ...defaultPermissions,
+        view_financials: true,
+        export_reports: true,
+        delete_exams: true,
+        bypass_delete_password: true,
+        visualizar_exames: true,
+        editar_resultados: true,
+        criar_exame: true,
+        duplicar_exame: true,
+        gerar_pdf_exame: true,
+        visualizar_valores: true,
+        visualizar_totais: true,
+        visualizar_repasses: true,
+        visualizar_relatorios_financeiros: true,
+        gerar_pdf_relatorio: true,
+        exportar_dados_exames: true,
+        visualizar_estatisticas: true,
+        excluir_exame_proprio: true,
+      }
     }
   };
+
+  const accessLevelKeysForUi = useMemo((): Array<keyof typeof accessLevels> => {
+    if (memberType === 'partner') {
+      return ['partnerVet', 'partnerClinic', 'custom'];
+    }
+    return ['basic', 'operational', 'managerial', 'admin', 'custom'];
+  }, [memberType]);
 
   const [permissions, setPermissions] = useState<UserPermissions>(accessLevels.basic.permissions);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
@@ -395,11 +453,25 @@ export const AdminUserForm = () => {
     });
 
     const userPerms = userToEdit.permissions || defaultPermissions;
-    let detectedLevel: 'basic' | 'operational' | 'managerial' | 'admin' | 'custom' = 'custom';
+    let detectedLevel:
+      | 'basic'
+      | 'operational'
+      | 'managerial'
+      | 'admin'
+      | 'custom'
+      | 'partnerVet'
+      | 'partnerClinic' = 'custom';
 
-    if (userPerms.edit_reports && userPerms.view_financials && userPerms.export_reports &&
+    if (
+      userToEdit.role === 'clinic' &&
+      !userPerms.edit_reports &&
+      !userPerms.manage_prices &&
+      userPerms.criar_exame
+    ) {
+      detectedLevel = 'partnerClinic';
+    } else if (userPerms.edit_reports && userPerms.view_financials && userPerms.export_reports &&
         !userPerms.manage_prices && !userPerms.manage_users && !userPerms.manage_settings && !userPerms.delete_exams) {
-      detectedLevel = 'operational';
+      detectedLevel = userToEdit.role === 'vet' ? 'partnerVet' : 'operational';
     } else if (userPerms.edit_reports && userPerms.view_financials && userPerms.manage_prices &&
                userPerms.export_reports && userPerms.delete_exams &&
                !userPerms.manage_users && !userPerms.manage_settings) {
@@ -710,7 +782,11 @@ export const AdminUserForm = () => {
           {!editingUser && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
               <div
-                onClick={() => { setMemberType('internal'); setFoundPartner(null); }}
+                onClick={() => {
+                  setMemberType('internal');
+                  setFoundPartner(null);
+                  applyAccessLevel('basic');
+                }}
                 className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center text-center transition-all ${
                   memberType === 'internal' ? 'border-gray-500 bg-gray-50 ring-1 ring-gray-500' : 'border-gray-200 hover:border-gray-300'
                 }`}
@@ -721,7 +797,10 @@ export const AdminUserForm = () => {
               </div>
 
               <div
-                onClick={() => setMemberType('partner')}
+                onClick={() => {
+                  setMemberType('partner');
+                  applyAccessLevel(partnerRole === 'vet' ? 'partnerVet' : 'partnerClinic');
+                }}
                 className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center text-center transition-all ${
                   memberType === 'partner' ? 'border-teal-500 bg-teal-50 ring-1 ring-teal-500' : 'border-gray-200 hover:border-gray-300'
                 }`}
@@ -813,7 +892,13 @@ export const AdminUserForm = () => {
                 <div className="relative">
                   <select
                     value={partnerRole}
-                    onChange={(e) => setPartnerRole(e.target.value as PartnerRole)}
+                    onChange={(e) => {
+                      const v = e.target.value as PartnerRole;
+                      setPartnerRole(v);
+                      if (!editingUser) {
+                        applyAccessLevel(v === 'vet' ? 'partnerVet' : 'partnerClinic');
+                      }
+                    }}
                     className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT ${foundPartner?.found ? 'bg-gray-100 text-gray-600 pointer-events-none' : ''}`}
                     disabled={!!foundPartner?.found}
                   >
@@ -840,7 +925,7 @@ export const AdminUserForm = () => {
               <div className="mb-4">
                 <label className="block text-xs font-semibold text-gray-600 mb-2">Selecione um nível de acesso:</label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {(Object.keys(accessLevels) as Array<keyof typeof accessLevels>).map(level => (
+                  {accessLevelKeysForUi.map(level => (
                     <button
                       key={level}
                       type="button"
