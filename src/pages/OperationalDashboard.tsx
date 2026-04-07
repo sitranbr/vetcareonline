@@ -2021,51 +2021,6 @@ export const OperationalDashboard = () => {
         </div>
       )}
 
-      {isRootClinicSubscriber && partnerContextOptions.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 animate-fade-in">
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="p-2 bg-petcare-bg rounded-lg shrink-0">
-              <LinkIcon className="w-5 h-5 text-petcare-DEFAULT" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Contexto de dados</p>
-              <p className="text-xs text-gray-600 mt-0.5">
-                Por padrão, apenas a sua clínica. Escolha um parceiro vinculado para ver o subconjunto autorizado dele.
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-col sm:items-end gap-1 shrink-0 w-full sm:w-auto sm:min-w-[220px]">
-            <label htmlFor="clinic-partner-context" className="sr-only">
-              Contexto de dados
-            </label>
-            <select
-              id="clinic-partner-context"
-              className="w-full sm:w-auto min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-gray-800 bg-gray-50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-petcare-DEFAULT/30 focus:border-petcare-DEFAULT"
-              value={clinicPartnerContextProfileId ?? ''}
-              onChange={(e) => {
-                const v = e.target.value.trim() || null;
-                setClinicPartnerContextProfileId(v);
-                if (user?.id) {
-                  try {
-                    if (v) localStorage.setItem(`petcare_clinic_ctx_${user.id}`, v);
-                    else localStorage.removeItem(`petcare_clinic_ctx_${user.id}`);
-                  } catch {
-                    /* ignore */
-                  }
-                }
-              }}
-            >
-              <option value="">Minha clínica</option>
-              {partnerContextOptions.map((o) => (
-                <option key={o.profileId} value={o.profileId}>
-                  Parceiro: {o.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      )}
-
       {canViewFinancialSummary && (
         <div className="animate-fade-in">
           <div className="flex justify-between items-center mb-2">
@@ -2131,7 +2086,51 @@ export const OperationalDashboard = () => {
         
         {activeTab === 'list' && canViewExamList && (
           <div className="p-6">
-            
+            {isRootClinicSubscriber && partnerContextOptions.length > 0 && (
+              <div className="mb-6 bg-white border border-gray-200 rounded-xl shadow-sm px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 animate-fade-in">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="p-2 bg-petcare-bg rounded-lg shrink-0">
+                    <LinkIcon className="w-5 h-5 text-petcare-DEFAULT" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Contexto de dados</p>
+                    <p className="text-xs text-gray-600 mt-0.5">
+                      Por padrão, apenas a sua clínica. Escolha um parceiro vinculado para ver o subconjunto autorizado dele na lista abaixo.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-col sm:items-end gap-1 shrink-0 w-full sm:w-auto sm:min-w-[220px]">
+                  <label htmlFor="clinic-partner-context-list" className="sr-only">
+                    Contexto de dados
+                  </label>
+                  <select
+                    id="clinic-partner-context-list"
+                    className="w-full sm:w-auto min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-gray-800 bg-gray-50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-petcare-DEFAULT/30 focus:border-petcare-DEFAULT"
+                    value={clinicPartnerContextProfileId ?? ''}
+                    onChange={(e) => {
+                      const v = e.target.value.trim() || null;
+                      setClinicPartnerContextProfileId(v);
+                      if (user?.id) {
+                        try {
+                          if (v) localStorage.setItem(`petcare_clinic_ctx_${user.id}`, v);
+                          else localStorage.removeItem(`petcare_clinic_ctx_${user.id}`);
+                        } catch {
+                          /* ignore */
+                        }
+                      }
+                    }}
+                  >
+                    <option value="">Minha clínica</option>
+                    {partnerContextOptions.map((o) => (
+                      <option key={o.profileId} value={o.profileId}>
+                        Parceiro: {o.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col md:flex-row gap-4 mb-6 justify-between items-center">
               <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                 <List className="w-5 h-5 text-petcare-DEFAULT" />
