@@ -14,6 +14,47 @@ const COLORS = {
   lightBg: [244, 249, 249]
 };
 
+/**
+ * Abre o PDF sem ser bloqueado como pop-up após `await` (fonts, imagens).
+ * No clique do usuário, chame primeiro `window.open('about:blank', '_blank')` e passe a janela aqui.
+ * Se não houver janela ou o navegador bloquear, tenta nova aba com o blob; por último força download.
+ */
+function openPdfResult(doc: jsPDF, previewWindow: Window | null | undefined, downloadName: string): void {
+  const blob = doc.output('blob');
+  const url = URL.createObjectURL(blob);
+  const revokeLater = () => {
+    window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+  };
+
+  if (previewWindow && !previewWindow.closed) {
+    try {
+      previewWindow.location.href = url;
+      revokeLater();
+      return;
+    } catch {
+      /* tenta fallbacks */
+    }
+  }
+
+  const opened = window.open(url, '_blank', 'noopener,noreferrer');
+  if (opened) {
+    revokeLater();
+    return;
+  }
+
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = downloadName;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(url), 3_000);
+  }
+}
+
 /** Fallback se Inter (public/fonts/Inter-VF.ttf) não carregar. */
 const PDF_FONT_FALLBACK = 'helvetica';
 const PDF_FONT_INTER = 'Inter';
@@ -209,7 +250,13 @@ export const generatePDFReport = async (
   startDate: string, 
   endDate: string, 
   branding: BrandingInfo,
-  options?: { groupByVet?: boolean, vetNames?: Record<string, string>, clinicNames?: Record<string, string> }
+  options?: {
+    groupByVet?: boolean;
+    vetNames?: Record<string, string>;
+    clinicNames?: Record<string, string>;
+    /** Janela aberta no mesmo evento de clique (`window.open('about:blank')`) para não perder o gesto do usuário. */
+    previewWindow?: Window | null;
+  }
 ) => {
   const reportExams = [...exams].sort((a, b) => {
     const ta = parseISO(a.date).getTime();
@@ -297,7 +344,7 @@ export const generatePDFReport = async (
     doc.setFont(pdfFont, 'normal');
     doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
     doc.text('Nenhum exame encontrado no período selecionado.', 14, startY + boxHeight + 20);
-    window.open(URL.createObjectURL(doc.output('blob')), '_blank');
+    openPdfResult(doc, options?.previewWindow, 'relatorio-exames.pdf');
     return;
   }
 
@@ -460,11 +507,16 @@ export const generatePDFReport = async (
     doc.setPage(i);
     addFooter(doc, branding, i, pageCount, pdfFont);
   }
-  window.open(URL.createObjectURL(doc.output('blob')), '_blank');
+  openPdfResult(doc, options?.previewWindow, 'relatorio-exames.pdf');
 };
 
 // Recibo
-export const generateReceipt = async (exam: Exam, user: User, branding: BrandingInfo) => {
+export const generateReceipt = async (
+  exam: Exam,
+  user: User,
+  branding: BrandingInfo,
+  previewWindow?: Window | null
+) => {
   const doc = new jsPDF();
   const pdfFont = await registerInterFonts(doc);
   await addHeader(doc, 'RECIBO DE SERVIÇO', branding, pdfFont);
@@ -557,7 +609,7 @@ export const generateReceipt = async (exam: Exam, user: User, branding: Branding
     doc.text(branding.email, 105, 285, { align: 'center' });
   }
 
-  window.open(URL.createObjectURL(doc.output('blob')), '_blank');
+  openPdfResult(doc, previewWindow, 'recibo.pdf');
 };
 
 // Laudo Médico
@@ -565,7 +617,8 @@ export const generateExamReport = async (
   exam: Exam, 
   branding: BrandingInfo, 
   responsibleVet?: Veterinarian, 
-  studyId?: string
+  studyId?: string,
+  previewWindow?: Window | null
 ) => {
   const doc = new jsPDF();
   const pdfFont = await registerInterFonts(doc);
@@ -816,5 +869,5 @@ export const generateExamReport = async (
     addFooter(doc, branding, i, pageCount, pdfFont);
   }
 
-  window.open(URL.createObjectURL(doc.output('blob')), '_blank');
+  openPdfResult(doc, previewWindow, `laudo-${exam.id.slice(0, 8)}.pdf`);
 };
