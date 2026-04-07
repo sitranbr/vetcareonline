@@ -419,6 +419,22 @@ export const OperationalDashboard = () => {
     return !!cid;
   }, [user?.role, user?.ownerId, user?.id, loggedUserEntity, currentTenant]);
 
+  /**
+   * IDs em `veterinarians` cujo profile está em `user.partners` (ex.: vet assinante parceiro).
+   * Exames com clinic_id = minha clínica mas veterinarian_id = parceiro são atendimento na minha unidade,
+   * porém pertencem ao contexto do parceiro — não entram em "Minha clínica".
+   */
+  const partnerLinkedVetEntityIds = useMemo(() => {
+    const partnerProfileIds = user?.partners;
+    if (!partnerProfileIds?.length) return new Set<string>();
+    const allowed = new Set(partnerProfileIds);
+    const out = new Set<string>();
+    veterinarians.forEach((v) => {
+      if (v.profileId && allowed.has(v.profileId)) out.add(v.id);
+    });
+    return out;
+  }, [user?.partners, veterinarians]);
+
   const availableVeterinarians = useMemo(() => {
     let targetClinicId: string | null = null;
     let isVetContext = false;
@@ -750,7 +766,15 @@ export const OperationalDashboard = () => {
       ]);
 
       if (examsResult.data) {
-        setExams(examsResult.data.map(e => ({
+        let examRows = examsResult.data;
+        if (isRootClinicSubscriber && !clinicPartnerContextProfileId) {
+          examRows = examRows.filter((e: { veterinarian_id?: string | null }) => {
+            const vid = (e.veterinarian_id ?? '').toString().trim();
+            if (!vid) return true;
+            return !partnerLinkedVetEntityIds.has(vid);
+          });
+        }
+        setExams(examRows.map(e => ({
           id: e.id, date: e.date, petName: e.pet_name, species: e.species, requesterVet: e.requester_vet, 
           requesterCrmv: e.requester_crmv, modality: e.modality, period: e.period, studies: e.studies, 
           studyDescription: e.study_description, rxStudies: e.rx_studies, veterinarianId: e.veterinarian_id, 
@@ -799,7 +823,9 @@ export const OperationalDashboard = () => {
 
       if (isRootClinicForPrices) {
         if (!clinicPartnerContextProfileId) {
-          pricesData = pricesData.filter((p: { clinic_id?: string | null }) => {
+          pricesData = pricesData.filter((p: { clinic_id?: string | null; veterinarian_id?: string | null }) => {
+            const vid = (p.veterinarian_id ?? '').toString().trim();
+            if (vid && partnerLinkedVetEntityIds.has(vid)) return false;
             const cid = (p.clinic_id ?? '').toString().trim();
             return cid === myClinicForPriceScope || cid === '' || cid === 'default';
           });
@@ -864,6 +890,8 @@ export const OperationalDashboard = () => {
     user,
     availableClinicsForVet,
     clinicPartnerContextProfileId,
+    isRootClinicSubscriber,
+    partnerLinkedVetEntityIds,
   ]);
 
   const [filterPet, setFilterPet] = useState('');
@@ -1031,11 +1059,17 @@ export const OperationalDashboard = () => {
     canCopyPriceTable,
   } = permFlags;
 
-  /** Assinante clínica: só exames cujo atendimento é nesta clínica (clinic_id = cadastro vinculado ao login). */
+  /**
+   * Assinante clínica: exames da própria operação (não os realizados na unidade por veterinário parceiro em profiles.partners).
+   */
   const examBelongsToSubscriberClinic = (exam: Exam): boolean => {
     if (user?.role !== 'clinic') return true;
     if (!loggedUserEntity || loggedUserEntity.type !== 'clinic') return false;
-    return (exam.clinicId || '').trim() === (loggedUserEntity.id || '').trim();
+    if ((exam.clinicId || '').trim() !== (loggedUserEntity.id || '').trim()) return false;
+    const vid = (exam.veterinarianId || '').trim();
+    if (!vid) return true;
+    if (partnerLinkedVetEntityIds.has(vid)) return false;
+    return true;
   };
 
   const examCanDeleteRow = (exam: Exam): boolean => {
