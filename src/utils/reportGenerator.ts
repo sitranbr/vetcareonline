@@ -15,43 +15,27 @@ const COLORS = {
 };
 
 /**
- * Abre o PDF sem ser bloqueado como pop-up após `await` (fonts, imagens).
- * No clique do usuário, chame primeiro `window.open('about:blank', '_blank')` e passe a janela aqui.
- * Se não houver janela ou o navegador bloquear, tenta nova aba com o blob; por último força download.
+ * Entrega o PDF ao usuário sem carregar `blob:` como documento de uma nova aba.
+ * Navegar para blob: em aba (ou redirecionar about:blank → blob) costuma ser bloqueado de forma ampla
+ * (Chrome/Brave/Edge → ERR_BLOCKED_BY_CLIENT por extensões ou política). Download não usa esse fluxo.
  */
-function openPdfResult(doc: jsPDF, previewWindow: Window | null | undefined, downloadName: string): void {
-  const blob = doc.output('blob');
-  const url = URL.createObjectURL(blob);
-  const revokeLater = () => {
-    window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
-  };
-
-  if (previewWindow && !previewWindow.closed) {
-    try {
-      previewWindow.location.href = url;
-      revokeLater();
-      return;
-    } catch {
-      /* tenta fallbacks */
-    }
-  }
-
-  const opened = window.open(url, '_blank', 'noopener,noreferrer');
-  if (opened) {
-    revokeLater();
-    return;
-  }
-
+function openPdfResult(doc: jsPDF, downloadName: string): void {
   try {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = downloadName;
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  } finally {
-    window.setTimeout(() => URL.revokeObjectURL(url), 3_000);
+    doc.save(downloadName);
+  } catch {
+    const blob = doc.output('blob');
+    const url = URL.createObjectURL(blob);
+    try {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = downloadName;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } finally {
+      window.setTimeout(() => URL.revokeObjectURL(url), 3_000);
+    }
   }
 }
 
@@ -254,8 +238,6 @@ export const generatePDFReport = async (
     groupByVet?: boolean;
     vetNames?: Record<string, string>;
     clinicNames?: Record<string, string>;
-    /** Janela aberta no mesmo evento de clique (`window.open('about:blank')`) para não perder o gesto do usuário. */
-    previewWindow?: Window | null;
   }
 ) => {
   const reportExams = [...exams].sort((a, b) => {
@@ -344,7 +326,7 @@ export const generatePDFReport = async (
     doc.setFont(pdfFont, 'normal');
     doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
     doc.text('Nenhum exame encontrado no período selecionado.', 14, startY + boxHeight + 20);
-    openPdfResult(doc, options?.previewWindow, 'relatorio-exames.pdf');
+    openPdfResult(doc, 'relatorio-exames.pdf');
     return;
   }
 
@@ -507,16 +489,11 @@ export const generatePDFReport = async (
     doc.setPage(i);
     addFooter(doc, branding, i, pageCount, pdfFont);
   }
-  openPdfResult(doc, options?.previewWindow, 'relatorio-exames.pdf');
+  openPdfResult(doc, 'relatorio-exames.pdf');
 };
 
 // Recibo
-export const generateReceipt = async (
-  exam: Exam,
-  user: User,
-  branding: BrandingInfo,
-  previewWindow?: Window | null
-) => {
+export const generateReceipt = async (exam: Exam, user: User, branding: BrandingInfo) => {
   const doc = new jsPDF();
   const pdfFont = await registerInterFonts(doc);
   await addHeader(doc, 'RECIBO DE SERVIÇO', branding, pdfFont);
@@ -609,7 +586,7 @@ export const generateReceipt = async (
     doc.text(branding.email, 105, 285, { align: 'center' });
   }
 
-  openPdfResult(doc, previewWindow, 'recibo.pdf');
+  openPdfResult(doc, 'recibo.pdf');
 };
 
 // Laudo Médico
@@ -617,8 +594,7 @@ export const generateExamReport = async (
   exam: Exam, 
   branding: BrandingInfo, 
   responsibleVet?: Veterinarian, 
-  studyId?: string,
-  previewWindow?: Window | null
+  studyId?: string
 ) => {
   const doc = new jsPDF();
   const pdfFont = await registerInterFonts(doc);
@@ -869,5 +845,5 @@ export const generateExamReport = async (
     addFooter(doc, branding, i, pageCount, pdfFont);
   }
 
-  openPdfResult(doc, previewWindow, `laudo-${exam.id.slice(0, 8)}.pdf`);
+  openPdfResult(doc, `laudo-${exam.id.slice(0, 8)}.pdf`);
 };

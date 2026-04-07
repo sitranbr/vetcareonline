@@ -1430,7 +1430,6 @@ export const OperationalDashboard = () => {
       alert('Sem permissão para exportar relatórios em PDF.');
       return;
     }
-    const preview = window.open('about:blank', '_blank');
     setIsGeneratingPdf(true);
     try {
       const branding = getBrandingForExam(exams[0] || {} as Exam);
@@ -1446,10 +1445,9 @@ export const OperationalDashboard = () => {
         reportStartDate, 
         reportEndDate, 
         branding,
-        { groupByVet, vetNames: vetNamesMap, clinicNames: clinicNamesMap, previewWindow: preview }
+        { groupByVet, vetNames: vetNamesMap, clinicNames: clinicNamesMap }
       );
     } catch (error) {
-      if (preview && !preview.closed) preview.close();
       console.error("Erro ao gerar PDF:", error);
       alert("Erro ao gerar PDF.");
     } finally {
@@ -1459,14 +1457,12 @@ export const OperationalDashboard = () => {
 
   const handlePrintReport = async (exam: Exam) => {
     if (!canPrintExam) return;
-    const preview = window.open('about:blank', '_blank');
     setIsGeneratingPdf(true);
     try {
       const branding = getBrandingForExam(exam);
       const responsibleVet = veterinarians.find(v => v.id === exam.veterinarianId || v.profileId === exam.veterinarianId);
-      await generateExamReport(exam, branding, responsibleVet, undefined, preview);
+      await generateExamReport(exam, branding, responsibleVet);
     } catch (error) {
-      if (preview && !preview.closed) preview.close();
       console.error("Erro ao gerar PDF:", error);
       alert("Erro ao gerar PDF.");
     } finally {
