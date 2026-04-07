@@ -15,6 +15,8 @@ interface AuthContextType {
   resetPassword: (email: string) => Promise<void>;
   isAuthenticated: boolean;
   isLoading: boolean;
+  /** Perfil do banco aplicado ao `user` (sessão com JWT não basta — evita UI com permissões provisórias). */
+  isProfileReady: boolean;
   profileError: string | null;
   getDefaultPermissions: (level: number) => UserPermissions;
   refreshUsers: () => Promise<void>;
@@ -86,6 +88,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  /** true após getSession sem login ou após hydrateUserProfile. Início false até saber o estado da sessão. */
+  const [isProfileReady, setIsProfileReady] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   
   const [currentTenant, setCurrentTenant] = useState<TenantContext | null>(null);
@@ -212,6 +216,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setProfileError("Modo offline/limitado ativado.");
     } finally {
       isHydratingRef.current = false;
+      setIsProfileReady(true);
     }
   };
 
@@ -224,20 +229,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             setUser(null);
             setCurrentTenant(null);
           }
+          setIsProfileReady(true);
           setIsLoading(false);
           return;
         }
         if (data.session?.user) {
           userIdRef.current = data.session.user.id;
+          setIsProfileReady(false);
           const tempUser = createUserFromSession(data.session.user);
           setUser(tempUser);
           setProvisionalTenant(tempUser);
           setIsLoading(false);
           hydrateUserProfile(data.session.user);
         } else {
+          setIsProfileReady(true);
           setIsLoading(false);
         }
       } catch (error) {
+        setIsProfileReady(true);
         setIsLoading(false);
       }
     };
@@ -247,10 +256,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUser(null);
         setCurrentTenant(null);
         userIdRef.current = null;
+        setIsProfileReady(true);
         setIsLoading(false);
       } else if (event === 'SIGNED_IN' && session?.user) {
         if (userIdRef.current !== session.user.id) {
            userIdRef.current = session.user.id;
+           setIsProfileReady(false);
            const tempUser = createUserFromSession(session.user);
            setUser(tempUser);
            setProvisionalTenant(tempUser);
@@ -351,6 +362,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       }
       userIdRef.current = data.user.id;
+      setIsProfileReady(false);
       const tempUser = createUserFromSession(data.user);
       setUser(tempUser);
       setProvisionalTenant(tempUser);
@@ -365,6 +377,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
     setCurrentTenant(null);
     userIdRef.current = null;
+    setIsProfileReady(true);
     try {
       await supabase.auth.signOut();
     } catch (e) {
@@ -492,7 +505,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   return (
     <AuthContext.Provider value={{ 
       user, users, login, logout, register, updateUser, updateAccount, deleteUser, resetPassword, 
-      isAuthenticated: !!user, isLoading, profileError, getDefaultPermissions, refreshUsers, refreshProfile,
+      isAuthenticated: !!user, isLoading, isProfileReady, profileError, getDefaultPermissions, refreshUsers, refreshProfile,
       currentTenant, availableTenants, switchTenant
     }}>
       {children}

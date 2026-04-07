@@ -154,7 +154,7 @@ const TABS = [
 ];
 
 export const OperationalDashboard = () => {
-  const { user, currentTenant } = useAuth(); 
+  const { user, currentTenant, isProfileReady } = useAuth();
   const { settings } = useSettings();
   const { veterinarians, clinics } = useRegistry();
   const navigate = useNavigate();
@@ -165,6 +165,8 @@ export const OperationalDashboard = () => {
   const [exams, setExams] = useState<Exam[]>([]);
   const [priceRules, setPriceRules] = useState<PriceRule[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
+  /** Após o 1º fetch com sucesso, não cobre a tela inteira ao refetch (registry/tenant/context). */
+  const suppressFullPageDataLoaderRef = useRef(false);
   
   const [showFinancialStats, setShowFinancialStats] = useState(true);
 
@@ -311,6 +313,7 @@ export const OperationalDashboard = () => {
   useEffect(() => {
     clinicContextHydratedRef.current = false;
     prevTabAllowedRef.current = [];
+    suppressFullPageDataLoaderRef.current = false;
   }, [user?.id]);
 
   /**
@@ -597,10 +600,12 @@ export const OperationalDashboard = () => {
   }, [availableClinicsForVet, activeTab, editingExamId, isIndependentVetSubscriber]);
 
   const fetchData = async () => {
+    if (!isProfileReady) return;
     if (!currentTenant) return;
     if (isPartnerView && !loggedUserEntity) return;
 
-    setIsLoadingData(true);
+    const showBlockingLoader = !suppressFullPageDataLoaderRef.current;
+    if (showBlockingLoader) setIsLoadingData(true);
 
     let query = supabase.from('exams').select('*').order('date', { ascending: false });
 
@@ -888,12 +893,14 @@ export const OperationalDashboard = () => {
       console.error("Erro geral no fetchData:", err);
     } finally {
       setIsLoadingData(false);
+      suppressFullPageDataLoaderRef.current = true;
     }
   };
 
   useEffect(() => {
     fetchData();
   }, [
+    isProfileReady,
     currentTenant,
     isPartnerView,
     loggedUserEntity,
@@ -1123,7 +1130,14 @@ export const OperationalDashboard = () => {
     if (listJustBecameAllowed && (activeTab === 'reports' || activeTab === 'prices')) {
       setActiveTab('list');
     }
-  }, [canViewExamList, canViewExamFormTab, canViewFinancialReports, canAccessPriceTab, activeTab]);
+  }, [
+    isProfileReady,
+    canViewExamList,
+    canViewExamFormTab,
+    canViewFinancialReports,
+    canAccessPriceTab,
+    activeTab,
+  ]);
 
   const getBrandingForExam = (_exam: Exam): BrandingInfo => {
     return { 
@@ -2007,6 +2021,15 @@ export const OperationalDashboard = () => {
     });
     return out.sort((a, b) => a.label.localeCompare(b.label, 'pt-BR', { sensitivity: 'base' }));
   }, [priceRules]);
+
+  if (user && !isProfileReady) {
+    return (
+      <div className="flex min-h-[50vh] w-full flex-col items-center justify-center gap-3 px-4">
+        <Loader2 className="w-10 h-10 text-petcare-DEFAULT animate-spin" />
+        <p className="text-sm text-gray-500">Carregando seu perfil...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
