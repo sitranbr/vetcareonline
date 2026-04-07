@@ -2281,7 +2281,6 @@ export const OperationalDashboard = () => {
 
                               {canPrintExam && (
                                 <button 
-                                  type="button"
                                   onClick={() => handlePrintReport(exam)}
                                   className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" 
                                   title="Imprimir / Visualizar PDF"
@@ -2703,7 +2702,6 @@ export const OperationalDashboard = () => {
                 </div>
 
                 <button 
-                  type="button"
                   onClick={handleExportPDF} 
                   disabled={isGeneratingPdf || !canExportFinancialReportPdf}
                   className="bg-petcare-dark text-white px-4 py-2 rounded-lg font-bold hover:bg-petcare-DEFAULT transition-colors flex items-center gap-2 shadow-md disabled:opacity-70"

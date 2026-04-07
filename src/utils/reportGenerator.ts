@@ -14,110 +14,6 @@ const COLORS = {
   lightBg: [244, 249, 249]
 };
 
-/**
- * Após `await` na geração do PDF, `doc.save()` / download automático costuma ser bloqueado silenciosamente
- * (perde-se o "gesto do usuário"). Abre modal na própria página com iframe + botão "Baixar PDF" (novo gesto).
- * Evita também abrir `blob:` em nova aba (ERR_BLOCKED_BY_CLIENT em vários ambientes).
- */
-function openPdfResult(doc: jsPDF, downloadName: string): void {
-  const blob = doc.output('blob');
-  const url = URL.createObjectURL(blob);
-
-  const overlay = document.createElement('div');
-  overlay.setAttribute('role', 'dialog');
-  overlay.setAttribute('aria-modal', 'true');
-  overlay.style.cssText = [
-    'position:fixed',
-    'inset:0',
-    'z-index:2147483646',
-    'background:rgba(15,23,42,0.55)',
-    'display:flex',
-    'align-items:center',
-    'justify-content:center',
-    'padding:12px',
-    'box-sizing:border-box',
-  ].join(';');
-
-  const panel = document.createElement('div');
-  panel.style.cssText = [
-    'background:#fff',
-    'border-radius:12px',
-    'width:min(960px,100%)',
-    'height:min(88vh,900px)',
-    'display:flex',
-    'flex-direction:column',
-    'overflow:hidden',
-    'box-shadow:0 25px 50px -12px rgba(0,0,0,0.35)',
-  ].join(';');
-
-  const toolbar = document.createElement('div');
-  toolbar.style.cssText =
-    'display:flex;gap:8px;align-items:center;justify-content:flex-end;padding:10px 12px;border-bottom:1px solid #e5e7eb;flex-shrink:0;background:#f9fafb;';
-
-  const title = document.createElement('span');
-  title.style.cssText =
-    'flex:1;font-family:system-ui,-apple-system,sans-serif;font-size:14px;font-weight:600;color:#374151;';
-  title.textContent = 'Pré-visualização do PDF';
-
-  const downloadBtn = document.createElement('button');
-  downloadBtn.type = 'button';
-  downloadBtn.textContent = 'Baixar PDF';
-  downloadBtn.style.cssText =
-    'font-family:system-ui,-apple-system,sans-serif;font-size:13px;font-weight:600;padding:8px 14px;border-radius:8px;border:0;background:#15504e;color:#fff;cursor:pointer;';
-
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.textContent = 'Fechar';
-  closeBtn.style.cssText =
-    'font-family:system-ui,-apple-system,sans-serif;font-size:13px;padding:8px 14px;border-radius:8px;border:1px solid #d1d5db;background:#fff;cursor:pointer;';
-
-  const frameWrap = document.createElement('div');
-  frameWrap.style.cssText = 'flex:1;min-height:0;background:#e5e7eb;position:relative;';
-
-  const iframe = document.createElement('iframe');
-  iframe.title = downloadName;
-  iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;';
-  iframe.src = url;
-
-  const cleanup = () => {
-    try {
-      overlay.remove();
-    } catch {
-      /* ignore */
-    }
-    URL.revokeObjectURL(url);
-    document.removeEventListener('keydown', onKeyDown);
-  };
-
-  const onKeyDown = (ev: KeyboardEvent) => {
-    if (ev.key === 'Escape') cleanup();
-  };
-
-  closeBtn.addEventListener('click', cleanup);
-  downloadBtn.addEventListener('click', () => {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = downloadName;
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  });
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) cleanup();
-  });
-  document.addEventListener('keydown', onKeyDown);
-
-  toolbar.appendChild(title);
-  toolbar.appendChild(downloadBtn);
-  toolbar.appendChild(closeBtn);
-  frameWrap.appendChild(iframe);
-  panel.appendChild(toolbar);
-  panel.appendChild(frameWrap);
-  overlay.appendChild(panel);
-  document.body.appendChild(overlay);
-}
-
 /** Fallback se Inter (public/fonts/Inter-VF.ttf) não carregar. */
 const PDF_FONT_FALLBACK = 'helvetica';
 const PDF_FONT_INTER = 'Inter';
@@ -313,11 +209,7 @@ export const generatePDFReport = async (
   startDate: string, 
   endDate: string, 
   branding: BrandingInfo,
-  options?: {
-    groupByVet?: boolean;
-    vetNames?: Record<string, string>;
-    clinicNames?: Record<string, string>;
-  }
+  options?: { groupByVet?: boolean, vetNames?: Record<string, string>, clinicNames?: Record<string, string> }
 ) => {
   const reportExams = [...exams].sort((a, b) => {
     const ta = parseISO(a.date).getTime();
@@ -405,7 +297,7 @@ export const generatePDFReport = async (
     doc.setFont(pdfFont, 'normal');
     doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
     doc.text('Nenhum exame encontrado no período selecionado.', 14, startY + boxHeight + 20);
-    openPdfResult(doc, 'relatorio-exames.pdf');
+    window.open(URL.createObjectURL(doc.output('blob')), '_blank');
     return;
   }
 
@@ -568,7 +460,7 @@ export const generatePDFReport = async (
     doc.setPage(i);
     addFooter(doc, branding, i, pageCount, pdfFont);
   }
-  openPdfResult(doc, 'relatorio-exames.pdf');
+  window.open(URL.createObjectURL(doc.output('blob')), '_blank');
 };
 
 // Recibo
@@ -665,7 +557,7 @@ export const generateReceipt = async (exam: Exam, user: User, branding: Branding
     doc.text(branding.email, 105, 285, { align: 'center' });
   }
 
-  openPdfResult(doc, 'recibo.pdf');
+  window.open(URL.createObjectURL(doc.output('blob')), '_blank');
 };
 
 // Laudo Médico
@@ -924,5 +816,5 @@ export const generateExamReport = async (
     addFooter(doc, branding, i, pageCount, pdfFont);
   }
 
-  openPdfResult(doc, `laudo-${exam.id.slice(0, 8)}.pdf`);
+  window.open(URL.createObjectURL(doc.output('blob')), '_blank');
 };
