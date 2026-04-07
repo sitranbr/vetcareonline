@@ -823,9 +823,13 @@ export const OperationalDashboard = () => {
 
       if (isRootClinicForPrices) {
         if (!clinicPartnerContextProfileId) {
-          pricesData = pricesData.filter((p: { clinic_id?: string | null; veterinarian_id?: string | null }) => {
-            const vid = (p.veterinarian_id ?? '').toString().trim();
-            if (vid && partnerLinkedVetEntityIds.has(vid)) return false;
+          /**
+           * Escopo da clínica (inclui regras com veterinarian_id = parceiro em Univet).
+           * Não remover regras de parceiro aqui: o dropdown "Exame" depende de priceRules + executor
+           * (clínica + vet) conforme clinicMatchesExamForm / availableExamsForSelectedClinic.
+           * Onde ocultar preços só do parceiro na UI: tabela de preços (visibleRules), não o estado global.
+           */
+          pricesData = pricesData.filter((p: { clinic_id?: string | null }) => {
             const cid = (p.clinic_id ?? '').toString().trim();
             return cid === myClinicForPriceScope || cid === '' || cid === 'default';
           });
@@ -2888,6 +2892,18 @@ export const OperationalDashboard = () => {
                           /** Só regras explicitamente cadastradas para essa clínica (sem incluir "Todas as Clínicas"). */
                           if (isGenericClinicId(rule.clinicId)) return false;
                           if ((rule.clinicId || '').trim() !== selectedClinicFilter.trim()) return false;
+                        }
+
+                        /** "Minha clínica" (sem contexto parceiro): tabela não lista linhas só do vet parceiro; o formulário ainda usa essas regras no select de exames. */
+                        if (
+                          user?.role === 'clinic' &&
+                          (!user?.ownerId || user.ownerId === user.id) &&
+                          loggedUserEntity?.type === 'clinic' &&
+                          !clinicPartnerContextProfileId &&
+                          partnerLinkedVetEntityIds.size > 0
+                        ) {
+                          const rvid = (rule.veterinarianId || '').trim();
+                          if (rvid && partnerLinkedVetEntityIds.has(rvid)) return false;
                         }
 
                         const isMainSubscriber = !user?.ownerId || user.ownerId === user.id;
