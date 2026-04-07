@@ -837,13 +837,19 @@ export const OperationalDashboard = () => {
           const pv = veterinarians.find((v) => v.profileId === clinicPartnerContextProfileId);
           const pc = clinics.find((c) => c.profileId === clinicPartnerContextProfileId);
           if (pv) {
+            /**
+             * Mesma lógica do select de exames (vetMatch): incluir regras do parceiro **e** regras
+             * sem vet específico / default nesta clínica. Só `vid === pv.id` esvaziava o dropdown
+             * quando os preços estão cadastrados como "genéricos" para a clínica.
+             */
             pricesData = pricesData.filter((p: { clinic_id?: string | null; veterinarian_id?: string | null }) => {
               const vid = (p.veterinarian_id ?? '').toString().trim();
               const cid = (p.clinic_id ?? '').toString().trim();
-              return (
-                vid === pv.id &&
-                (cid === myClinicForPriceScope || cid === '' || cid === 'default')
-              );
+              const clinicOk =
+                cid === myClinicForPriceScope || cid === '' || cid === 'default';
+              if (!clinicOk) return false;
+              const genericVet = !vid || vid === 'default';
+              return genericVet || vid === pv.id;
             });
           } else if (pc) {
             pricesData = pricesData.filter(
