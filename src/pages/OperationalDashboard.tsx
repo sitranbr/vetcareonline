@@ -160,6 +160,8 @@ export const OperationalDashboard = () => {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<'form' | 'list' | 'reports' | 'prices'>('list');
+  /** Snapshot anterior de abas permitidas (permFlags) para detectar hidratação tardia de permissões. */
+  const prevTabAllowedRef = useRef<Array<'list' | 'form' | 'reports' | 'prices'>>([]);
   const [exams, setExams] = useState<Exam[]>([]);
   const [priceRules, setPriceRules] = useState<PriceRule[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -308,6 +310,7 @@ export const OperationalDashboard = () => {
 
   useEffect(() => {
     clinicContextHydratedRef.current = false;
+    prevTabAllowedRef.current = [];
   }, [user?.id]);
 
   /**
@@ -1103,8 +1106,22 @@ export const OperationalDashboard = () => {
       return false;
     });
     if (allowed.length === 0) return;
+
+    const prevAllowed = prevTabAllowedRef.current;
+    const listJustBecameAllowed = !prevAllowed.includes('list') && allowed.includes('list');
+    prevTabAllowedRef.current = allowed;
+
     if (!allowed.includes(activeTab)) {
       setActiveTab(allowed[0]);
+      return;
+    }
+
+    /**
+     * Primeiro frame: permissões ainda incompletas → só Relatórios/Preços; activeTab cai em "reports".
+     * Após hidratar, lista/form passam a existir — voltar para Lista (padrão do produto) em vez de ficar preso em Relatórios.
+     */
+    if (listJustBecameAllowed && (activeTab === 'reports' || activeTab === 'prices')) {
+      setActiveTab('list');
     }
   }, [canViewExamList, canViewExamFormTab, canViewFinancialReports, canAccessPriceTab, activeTab]);
 

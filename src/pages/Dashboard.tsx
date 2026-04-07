@@ -14,6 +14,6 @@ export const Dashboard = () => {
     return <AdminTenants />;
   }
 
-  // Se for Tenant (Vet/Clínica) ou Recepção, mostra o Dashboard Operacional (Exames)
+  // Assinante: abas/permissões em OperationalDashboard (incl. sincronização de aba após hidratar permissões).
   return <OperationalDashboard />;
 };
