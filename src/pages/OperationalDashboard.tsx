@@ -310,27 +310,26 @@ export const OperationalDashboard = () => {
     clinicContextHydratedRef.current = false;
   }, [user?.id]);
 
+  /**
+   * Inicialização: não restaurar parceiro do localStorage — sempre começar em "Minha clínica"
+   * (dados do assinante). Remove chave legada para não reaparecer após F5.
+   */
   useEffect(() => {
     if (!user?.id || user.role !== 'clinic') return;
     if (clinicContextHydratedRef.current) return;
     clinicContextHydratedRef.current = true;
     try {
-      const raw = localStorage.getItem(`petcare_clinic_ctx_${user.id}`);
-      if (raw && raw !== 'null') setClinicPartnerContextProfileId(raw);
+      localStorage.removeItem(`petcare_clinic_ctx_${user.id}`);
     } catch {
       /* ignore */
     }
+    setClinicPartnerContextProfileId(null);
   }, [user?.id, user?.role]);
 
   useEffect(() => {
     if (!user?.id || user.role !== 'clinic') return;
     if (clinicPartnerContextProfileId && user.partners?.length && !user.partners.includes(clinicPartnerContextProfileId)) {
       setClinicPartnerContextProfileId(null);
-      try {
-        localStorage.removeItem(`petcare_clinic_ctx_${user.id}`);
-      } catch {
-        /* ignore */
-      }
     }
   }, [user?.id, user?.role, user?.partners, clinicPartnerContextProfileId]);
   
@@ -2108,16 +2107,7 @@ export const OperationalDashboard = () => {
                     className="w-full sm:w-auto min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-gray-800 bg-gray-50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-petcare-DEFAULT/30 focus:border-petcare-DEFAULT"
                     value={clinicPartnerContextProfileId ?? ''}
                     onChange={(e) => {
-                      const v = e.target.value.trim() || null;
-                      setClinicPartnerContextProfileId(v);
-                      if (user?.id) {
-                        try {
-                          if (v) localStorage.setItem(`petcare_clinic_ctx_${user.id}`, v);
-                          else localStorage.removeItem(`petcare_clinic_ctx_${user.id}`);
-                        } catch {
-                          /* ignore */
-                        }
-                      }
+                      setClinicPartnerContextProfileId(e.target.value.trim() || null);
                     }}
                   >
                     <option value="">Minha clínica</option>
