@@ -15,28 +15,107 @@ const COLORS = {
 };
 
 /**
- * Entrega o PDF ao usuário sem carregar `blob:` como documento de uma nova aba.
- * Navegar para blob: em aba (ou redirecionar about:blank → blob) costuma ser bloqueado de forma ampla
- * (Chrome/Brave/Edge → ERR_BLOCKED_BY_CLIENT por extensões ou política). Download não usa esse fluxo.
+ * Após `await` na geração do PDF, `doc.save()` / download automático costuma ser bloqueado silenciosamente
+ * (perde-se o "gesto do usuário"). Abre modal na própria página com iframe + botão "Baixar PDF" (novo gesto).
+ * Evita também abrir `blob:` em nova aba (ERR_BLOCKED_BY_CLIENT em vários ambientes).
  */
 function openPdfResult(doc: jsPDF, downloadName: string): void {
-  try {
-    doc.save(downloadName);
-  } catch {
-    const blob = doc.output('blob');
-    const url = URL.createObjectURL(blob);
+  const blob = doc.output('blob');
+  const url = URL.createObjectURL(blob);
+
+  const overlay = document.createElement('div');
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.style.cssText = [
+    'position:fixed',
+    'inset:0',
+    'z-index:2147483646',
+    'background:rgba(15,23,42,0.55)',
+    'display:flex',
+    'align-items:center',
+    'justify-content:center',
+    'padding:12px',
+    'box-sizing:border-box',
+  ].join(';');
+
+  const panel = document.createElement('div');
+  panel.style.cssText = [
+    'background:#fff',
+    'border-radius:12px',
+    'width:min(960px,100%)',
+    'height:min(88vh,900px)',
+    'display:flex',
+    'flex-direction:column',
+    'overflow:hidden',
+    'box-shadow:0 25px 50px -12px rgba(0,0,0,0.35)',
+  ].join(';');
+
+  const toolbar = document.createElement('div');
+  toolbar.style.cssText =
+    'display:flex;gap:8px;align-items:center;justify-content:flex-end;padding:10px 12px;border-bottom:1px solid #e5e7eb;flex-shrink:0;background:#f9fafb;';
+
+  const title = document.createElement('span');
+  title.style.cssText =
+    'flex:1;font-family:system-ui,-apple-system,sans-serif;font-size:14px;font-weight:600;color:#374151;';
+  title.textContent = 'Pré-visualização do PDF';
+
+  const downloadBtn = document.createElement('button');
+  downloadBtn.type = 'button';
+  downloadBtn.textContent = 'Baixar PDF';
+  downloadBtn.style.cssText =
+    'font-family:system-ui,-apple-system,sans-serif;font-size:13px;font-weight:600;padding:8px 14px;border-radius:8px;border:0;background:#15504e;color:#fff;cursor:pointer;';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.textContent = 'Fechar';
+  closeBtn.style.cssText =
+    'font-family:system-ui,-apple-system,sans-serif;font-size:13px;padding:8px 14px;border-radius:8px;border:1px solid #d1d5db;background:#fff;cursor:pointer;';
+
+  const frameWrap = document.createElement('div');
+  frameWrap.style.cssText = 'flex:1;min-height:0;background:#e5e7eb;position:relative;';
+
+  const iframe = document.createElement('iframe');
+  iframe.title = downloadName;
+  iframe.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;';
+  iframe.src = url;
+
+  const cleanup = () => {
     try {
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = downloadName;
-      a.rel = 'noopener';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } finally {
-      window.setTimeout(() => URL.revokeObjectURL(url), 3_000);
+      overlay.remove();
+    } catch {
+      /* ignore */
     }
-  }
+    URL.revokeObjectURL(url);
+    document.removeEventListener('keydown', onKeyDown);
+  };
+
+  const onKeyDown = (ev: KeyboardEvent) => {
+    if (ev.key === 'Escape') cleanup();
+  };
+
+  closeBtn.addEventListener('click', cleanup);
+  downloadBtn.addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = downloadName;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  });
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) cleanup();
+  });
+  document.addEventListener('keydown', onKeyDown);
+
+  toolbar.appendChild(title);
+  toolbar.appendChild(downloadBtn);
+  toolbar.appendChild(closeBtn);
+  frameWrap.appendChild(iframe);
+  panel.appendChild(toolbar);
+  panel.appendChild(frameWrap);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
 }
 
 /** Fallback se Inter (public/fonts/Inter-VF.ttf) não carregar. */
