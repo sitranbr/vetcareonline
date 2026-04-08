@@ -19,7 +19,7 @@ export const AdminUserForm = () => {
   const isNewMode = !userId;
 
   const { users, user: currentUser, register, updateUser, refreshUsers, refreshProfile, isLoading: authLoading } = useAuth();
-  const { linkPartnerByEmail, findPartnerByEmail } = useRegistry();
+  const { linkPartnerByEmail, findPartnerByEmail, refreshRegistry } = useRegistry();
 
   const [isSearchingPartner, setIsSearchingPartner] = useState(false);
   const [foundPartner, setFoundPartner] = useState<{ found: boolean; name?: string; role?: string; id?: string; alreadyLinked?: boolean } | null>(null);
@@ -624,16 +624,13 @@ export const AdminUserForm = () => {
         if (memberType === 'partner') {
           if (!currentUser) throw new Error("Sessão inválida");
 
-          const linkResult = await linkPartnerByEmail(
-            formData.email,
-            currentUser.id,
-            currentUser.role === 'vet' ? 'vet' : 'clinic'
-          );
+          const linkResult = await linkPartnerByEmail(formData.email.trim().toLowerCase());
 
           if (linkResult.success) {
             setFormSuccess(`Parceiro ${linkResult.name || ''} conectado com sucesso!`);
             await refreshProfile();
             await refreshUsers();
+            await refreshRegistry();
             setTimeout(() => {
               goToList();
             }, 2000);
@@ -641,10 +638,16 @@ export const AdminUserForm = () => {
             return;
           }
 
-          if (linkResult.message && linkResult.message.includes('já está vinculado')) {
+          const alreadyLinkedMsg = (linkResult.message || '').toLowerCase();
+          if (
+            linkResult.message &&
+            (alreadyLinkedMsg.includes('já está vinculado') ||
+              (alreadyLinkedMsg.includes('já') && alreadyLinkedMsg.includes('vincul')))
+          ) {
             setFormSuccess("Este parceiro já está conectado à sua conta.");
             await refreshProfile();
             await refreshUsers();
+            await refreshRegistry();
             setTimeout(() => {
               goToList();
             }, 2000);

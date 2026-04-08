@@ -12,7 +12,7 @@ interface RegistryContextType {
   addClinic: (clinic: Omit<Clinic, 'id'>, profileId?: string | null) => Promise<{ success: boolean; error?: string }>;
   updateClinic: (id: string, data: Partial<Clinic>) => Promise<void>;
   deleteClinic: (id: string) => Promise<void>;
-  linkPartnerByEmail: (email: string, myId: string, myType: 'vet' | 'clinic') => Promise<{ success: boolean; message?: string; name?: string }>;
+  linkPartnerByEmail: (email: string) => Promise<{ success: boolean; message?: string; name?: string }>;
   findPartnerByEmail: (email: string) => Promise<{ found: boolean; name?: string; role?: string; id?: string }>;
   unlinkPartner: (partnerId: string, myId: string) => Promise<{ success: boolean; message?: string }>;
   resetRegistry: () => void;
@@ -232,25 +232,58 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
     setClinics(prev => prev.filter(c => c.id !== id));
   };
 
-  const linkPartnerByEmail = async (email: string, myId: string, myType: 'vet' | 'clinic') => {
+  const linkPartnerByEmail = async (email: string) => {
     try {
+      if (!user?.id) {
+        return { success: false, message: 'Sessão inválida.' };
+      }
+      /** Quem assina / dono do tenant — não o perfil de recepção ou membro interno. */
+      const requesterProfileId =
+        user.ownerId && user.ownerId !== user.id ? user.ownerId : user.id;
+
+      const { data: reqProf } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', requesterProfileId)
+        .maybeSingle();
+      const requesterType: 'vet' | 'clinic' = reqProf?.role === 'vet' ? 'vet' : 'clinic';
+
       const { data, error } = await supabase.rpc('link_partner_by_email', {
-        target_email: email,
-        requester_id: myId,
-        requester_type: myType
+        target_email: email.trim().toLowerCase(),
+        requester_id: requesterProfileId,
+        requester_type: requesterType
       });
 
       if (error) throw error;
 
-      if (data.success) {
-        await loadRegistry();
-        return { success: true, name: data.name };
-      } else {
-        return { success: false, message: data.message };
+      let payload: { success?: boolean; message?: string; name?: string } = {};
+      if (data == null) {
+        return { success: false, message: 'Resposta vazia do servidor ao vincular parceiro.' };
       }
-    } catch (err: any) {
+      if (typeof data === 'string') {
+        try {
+          payload = JSON.parse(data) as typeof payload;
+        } catch {
+          return { success: false, message: 'Resposta inválida do servidor.' };
+        }
+      } else if (typeof data === 'object') {
+        payload = data as typeof payload;
+      }
+
+      if (payload.success === true) {
+        await loadRegistry();
+        return { success: true, name: payload.name };
+      }
+      return {
+        success: false,
+        message:
+          (typeof payload.message === 'string' && payload.message) ||
+          'Não foi possível concluir o vínculo. Verifique permissões no Supabase (RPC link_partner_by_email).'
+      };
+    } catch (err: unknown) {
       console.error("Erro ao vincular parceiro:", err);
-      return { success: false, message: err.message || 'Erro ao conectar com o servidor.' };
+      const msg = err instanceof Error ? err.message : 'Erro ao conectar com o servidor.';
+      return { success: false, message: msg };
     }
   };
 
@@ -304,12 +337,20 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
     await loadRegistry();
   };
 
-  const unlinkPartner = async (partnerId: string, myId: string) => {
+  const unlinkPartner = async (partnerId: string, myId?: string) => {
     try {
+      const requesterProfileId =
+        user && user.ownerId && user.ownerId !== user.id
+          ? user.ownerId
+          : (user?.id ?? myId ?? '');
+      if (!requesterProfileId) {
+        return { success: false, message: 'Sessão inválida.' };
+      }
+
       const { data: myProfile, error: profileError } = await supabase
         .from('profiles')
         .select('partners')
-        .eq('id', myId)
+        .eq('id', requesterProfileId)
         .maybeSingle();
 
       if (profileError) {
@@ -327,7 +368,7 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ partners: updatedPartners })
-        .eq('id', myId);
+        .eq('id', requesterProfileId);
 
       if (updateError) {
         console.error("Erro ao desvincular parceiro:", updateError);
@@ -342,7 +383,7 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
 
       if (partnerProfile && partnerProfile.partners) {
         const partnerPartners = partnerProfile.partners || [];
-        const updatedPartnerPartners = partnerPartners.filter((id: string) => id !== myId);
+        const updatedPartnerPartners = partnerPartners.filter((id: string) => id !== requesterProfileId);
         
         await supabase
           .from('profiles')

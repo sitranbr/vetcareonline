@@ -353,7 +353,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const refreshUsers = async () => {
-    if (user?.permissions.manage_users) {
+    const canSeeTeamList =
+      !!user &&
+      (user.level === 1 ||
+        user.permissions?.manage_users ||
+        user.permissions?.vincular_parceiro ||
+        user.permissions?.visualizar_equipe);
+    if (canSeeTeamList) {
       let allProfiles: any[] = [];
       
       if (user.level === 1) {
@@ -366,10 +372,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         allProfiles = ownedProfiles || [];
 
         try {
-          const { data: myProfile } = await supabase.from('profiles').select('partners').eq('id', user.id).maybeSingle();
-          
-          if (myProfile && myProfile.partners && Array.isArray(myProfile.partners) && myProfile.partners.length > 0) {
-            const { data: partnerProfiles } = await supabase.from('profiles').select('*').in('id', myProfile.partners);
+          const partnersHolderId =
+            user.ownerId && user.ownerId !== user.id ? user.ownerId : user.id;
+          const { data: myProfile } = await supabase
+            .from('profiles')
+            .select('partners')
+            .eq('id', partnersHolderId)
+            .maybeSingle();
+
+          let mergedPartnerIds = [...((myProfile?.partners as string[]) || [])];
+          if (user.ownerId && user.ownerId !== user.id) {
+            const { data: selfP } = await supabase
+              .from('profiles')
+              .select('partners')
+              .eq('id', user.id)
+              .maybeSingle();
+            const selfPartners = (selfP?.partners as string[]) || [];
+            mergedPartnerIds = Array.from(new Set([...mergedPartnerIds, ...selfPartners]));
+          }
+
+          if (mergedPartnerIds.length > 0) {
+            const { data: partnerProfiles } = await supabase.from('profiles').select('*').in('id', mergedPartnerIds);
             
             if (partnerProfiles) {
               const existingIds = new Set(allProfiles.map(p => p.id));
