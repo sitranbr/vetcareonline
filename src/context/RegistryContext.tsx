@@ -81,7 +81,18 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
       .eq('id', tenantRootId)
       .maybeSingle();
 
-    const partnerIds = (rootProfile?.partners as string[]) || [];
+    let partnerIds = (rootProfile?.partners as string[]) || [];
+
+    /** Parceiro convidado: vínculos em `profiles.partners` do próprio perfil (ex.: nova clínica) não estão no array do assinante. */
+    if (user.ownerId && user.ownerId !== user.id) {
+      const { data: selfProfile } = await supabase
+        .from('profiles')
+        .select('partners')
+        .eq('id', user.id)
+        .maybeSingle();
+      const selfPartners = (selfProfile?.partners as string[]) || [];
+      partnerIds = Array.from(new Set([...partnerIds, ...selfPartners]));
+    }
 
     const { data: ownedProfiles } = await supabase
       .from('profiles')

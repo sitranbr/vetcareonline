@@ -251,7 +251,13 @@ export const OperationalDashboard = () => {
         const targetOwnerId = user.ownerId && user.ownerId !== user.id ? user.ownerId : user.id;
 
         const { data: profile } = await supabase.from('profiles').select('partners').eq('id', targetOwnerId).maybeSingle();
-        const partnerIds = profile?.partners || [];
+        let partnerIds: string[] = [...(profile?.partners || [])];
+
+        if (user.ownerId && user.ownerId !== user.id) {
+          const { data: selfProf } = await supabase.from('profiles').select('partners').eq('id', user.id).maybeSingle();
+          const selfPartners = selfProf?.partners || [];
+          partnerIds = Array.from(new Set([...partnerIds, ...selfPartners]));
+        }
 
         if (partnerIds.length > 0) {
           const { data: pClinics } = await supabase.from('clinics').select('*').in('profile_id', partnerIds);

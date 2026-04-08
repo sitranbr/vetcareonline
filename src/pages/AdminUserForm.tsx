@@ -18,7 +18,7 @@ export const AdminUserForm = () => {
   const navigate = useNavigate();
   const isNewMode = !userId;
 
-  const { users, user: currentUser, register, updateUser, refreshUsers, isLoading: authLoading } = useAuth();
+  const { users, user: currentUser, register, updateUser, refreshUsers, refreshProfile, isLoading: authLoading } = useAuth();
   const { linkPartnerByEmail, findPartnerByEmail } = useRegistry();
 
   const [isSearchingPartner, setIsSearchingPartner] = useState(false);
@@ -632,6 +632,7 @@ export const AdminUserForm = () => {
 
           if (linkResult.success) {
             setFormSuccess(`Parceiro ${linkResult.name || ''} conectado com sucesso!`);
+            await refreshProfile();
             await refreshUsers();
             setTimeout(() => {
               goToList();
@@ -642,6 +643,7 @@ export const AdminUserForm = () => {
 
           if (linkResult.message && linkResult.message.includes('já está vinculado')) {
             setFormSuccess("Este parceiro já está conectado à sua conta.");
+            await refreshProfile();
             await refreshUsers();
             setTimeout(() => {
               goToList();
