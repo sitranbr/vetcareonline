@@ -20,8 +20,6 @@ export const calculateExamValues = (
   
   const safeClinicId = (clinicId || '').trim();
   const safeVetId = (veterinarianId || '').trim();
-  /** Com clínica no exame: não usar regras "Todas as Clínicas" no valor final (alinha ao select de exames / tabela do parceiro). */
-  const strictClinic = safeClinicId.length > 0;
 
   // Funções auxiliares para verificar correspondências
   const isClinicMatch = (r: PriceRule) => (r.clinicId || '').trim() === safeClinicId;
@@ -46,20 +44,16 @@ export const calculateExamValues = (
   
   // 2. Prioridade Alta: Clínica Exata + Qualquer Veterinário + Período
   if (!rule) rule = priceRules.find(r => isClinicMatch(r) && isVetGeneric(r) && isPeriodMatch(r) && isModalityMatch(r));
-  
-  // 3–4. Regras sem clínica específica (só quando o exame também não tem clínica — ex.: vet independente)
-  if (!strictClinic) {
-    if (!rule) rule = priceRules.find(r => isClinicGeneric(r) && isVetMatch(r) && isPeriodMatch(r) && isModalityMatch(r));
-    if (!rule) rule = priceRules.find(r => isClinicGeneric(r) && isVetGeneric(r) && isPeriodMatch(r) && isModalityMatch(r));
-  }
+
+  // 3–4. "Todas as Clínicas" + veterinário (ex.: parceiro com preço único em qualquer unidade do assinante)
+  if (!rule) rule = priceRules.find(r => isClinicGeneric(r) && isVetMatch(r) && isPeriodMatch(r) && isModalityMatch(r));
+  if (!rule) rule = priceRules.find(r => isClinicGeneric(r) && isVetGeneric(r) && isPeriodMatch(r) && isModalityMatch(r));
 
   // FALLBACKS IGNORANDO O PERÍODO (Caso não tenha regra pro período específico)
   if (!rule) rule = priceRules.find(r => isClinicMatch(r) && isVetMatch(r) && isModalityMatch(r));
   if (!rule) rule = priceRules.find(r => isClinicMatch(r) && isVetGeneric(r) && isModalityMatch(r));
-  if (!strictClinic) {
-    if (!rule) rule = priceRules.find(r => isClinicGeneric(r) && isVetMatch(r) && isModalityMatch(r));
-    if (!rule) rule = priceRules.find(r => isClinicGeneric(r) && isVetGeneric(r) && isModalityMatch(r));
-  }
+  if (!rule) rule = priceRules.find(r => isClinicGeneric(r) && isVetMatch(r) && isModalityMatch(r));
+  if (!rule) rule = priceRules.find(r => isClinicGeneric(r) && isVetGeneric(r) && isModalityMatch(r));
 
   let baseValue = 0;
   let baseRepasseProf = 0;

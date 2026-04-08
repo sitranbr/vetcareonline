@@ -113,16 +113,19 @@ const priceRuleMatchesPriceTablePartnerFilter = (
 };
 
 /**
- * Novo exame — lista de modalidades/períodos: com clínica definida (select ou contexto clínica),
- * considera só regras **dessa** clínica. Sem clínica (ex.: vet independente), só regras sem clínica
- * específica (tabela geral do profissional). Assim o select de exames acompanha clínica + veterinário.
+ * Novo exame — filtra regras por clínica do exame + veterinário.
+ * - Clínica no exame: regra da **mesma** clínica OU regra **Todas as Clínicas** (genérica) do assinante
+ *   (ex.: preço só para o parceiro em qualquer unidade — alinhado à tabela de preços).
+ * - Sem clínica: só regras sem clínica específica (vet independente / geral do profissional).
  */
 const clinicMatchesExamForm = (ruleClinicId: string | undefined | null, cleanEffectiveId: string) => {
   const ce = (cleanEffectiveId || '').trim();
   if (!ce) {
     return isGenericClinicId(ruleClinicId);
   }
-  return (ruleClinicId ?? '').trim() === ce;
+  const rc = (ruleClinicId ?? '').trim();
+  if (rc === ce) return true;
+  return isGenericClinicId(ruleClinicId);
 };
 
 /** Mensagem legível para falhas do PostgREST / Supabase (inclui NOT NULL em clinic_id). */
