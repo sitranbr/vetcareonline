@@ -1246,10 +1246,17 @@ export const OperationalDashboard = () => {
   }
   if (!effectiveClinicId) effectiveClinicId = '';
 
+  /** Executor para preço e persistência: parceiro veterinário usa o cadastro resolvido mesmo se o state atrasar. */
+  const effectiveVeterinarianId = (
+    formData.veterinarianId ||
+    (loggedUserEntity?.type === 'vet' ? loggedUserEntity.id : '') ||
+    ''
+  ).trim();
+
   const availableExamsForSelectedClinic = useMemo(() => {
     const examsMap = new Map<string, { value: string, label: string, isCustom: boolean }>();
     const cleanEffectiveId = (effectiveClinicId || '').trim();
-    const safeVetId = (formData.veterinarianId || '').trim();
+    const safeVetId = effectiveVeterinarianId;
     const selectedPeriod = formData.period;
 
     const clinicVetRules = priceRules.filter(r => {
@@ -1306,11 +1313,11 @@ export const OperationalDashboard = () => {
     }
 
     return Array.from(examsMap.values());
-  }, [priceRules, effectiveClinicId, formData.veterinarianId, formData.period, isIndependentVetSubscriber]);
+  }, [priceRules, effectiveClinicId, effectiveVeterinarianId, formData.period, isIndependentVetSubscriber]);
 
   const availablePeriods = useMemo(() => {
     const cleanEffectiveId = (effectiveClinicId || '').trim();
-    const safeVetId = (formData.veterinarianId || '').trim();
+    const safeVetId = effectiveVeterinarianId;
 
     const relevantRules = priceRules.filter(r => {
       const ruleVetId = (r.veterinarianId || '').trim();
@@ -1345,13 +1352,13 @@ export const OperationalDashboard = () => {
     }
 
     return allStandardPeriods.filter(p => periods.has(p.value));
-  }, [priceRules, effectiveClinicId, formData.veterinarianId]);
+  }, [priceRules, effectiveClinicId, effectiveVeterinarianId]);
 
   /** Veterinário assinante independente: exige ao menos uma regra de preço com valor antes do 1º exame. */
   const vetHasAtLeastOnePricedRule = useMemo(() => {
     if (!isIndependentVetSubscriber) return true;
     const cleanEffectiveId = (effectiveClinicId || '').trim();
-    const safeVetId = (formData.veterinarianId || loggedUserEntity?.id || '').trim();
+    const safeVetId = effectiveVeterinarianId;
     if (!safeVetId) return false;
     const relevant = priceRules.filter(r => {
       const ruleVetId = (r.veterinarianId || '').trim();
@@ -1360,7 +1367,7 @@ export const OperationalDashboard = () => {
       return clinicMatch && vetMatch;
     });
     return relevant.some(r => r.valor != null && Number(r.valor) > 0);
-  }, [isIndependentVetSubscriber, priceRules, effectiveClinicId, formData.veterinarianId, loggedUserEntity?.id]);
+  }, [isIndependentVetSubscriber, priceRules, effectiveClinicId, effectiveVeterinarianId]);
 
   useEffect(() => {
     if (activeTab === 'form' && availablePeriods.length > 0) {
@@ -1450,7 +1457,7 @@ export const OperationalDashboard = () => {
           item.studies,
           effectiveClinicId,
           item.studyDescription,
-          formData.veterinarianId,
+          effectiveVeterinarianId,
           { noClinicPartner: vetChoseNoClinic }
         );
         
@@ -1468,7 +1475,7 @@ export const OperationalDashboard = () => {
           
           period: formData.period,
           machine_owner: formData.machineOwner,
-          veterinarian_id: formData.veterinarianId,
+          veterinarian_id: effectiveVeterinarianId,
           clinic_id: clinicForSave,
           
           total_value: values.totalValue,
@@ -2014,7 +2021,7 @@ export const OperationalDashboard = () => {
         item.studies, 
         effectiveClinicId,
         item.studyDescription,
-        formData.veterinarianId,
+        effectiveVeterinarianId,
         { noClinicPartner: vetChoseNoClinic }
       );
       return {
@@ -2023,7 +2030,7 @@ export const OperationalDashboard = () => {
         clinic: acc.clinic + values.repasseClinic
       };
     }, { total: 0, prof: 0, clinic: 0 });
-  }, [formData.items, formData.period, formData.machineOwner, effectiveClinicId, priceRules, formData.veterinarianId, vetChoseNoClinic]);
+  }, [formData.items, formData.period, formData.machineOwner, effectiveClinicId, priceRules, effectiveVeterinarianId, vetChoseNoClinic]);
 
   const selectedPartnerScope = priceForm.clinicId
     ? `clinic|${priceForm.clinicId}`
