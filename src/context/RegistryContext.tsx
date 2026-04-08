@@ -53,11 +53,6 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
   const [veterinarians, setVeterinarians] = useState<Veterinarian[]>([]);
   const [clinics, setClinics] = useState<Clinic[]>([]);
 
-  /**
-   * Isolamento por tenant: só clínicas/veterinários cujo profile_id pertence ao assinante
-   * (perfil raiz + parceiros em `partners` + perfis com owner_id = assinante).
-   * Super Admin (nível 1) continua vendo todos para gestão da plataforma.
-   */
   const loadRegistry = useCallback(async () => {
     if (!user) {
       setVeterinarians([]);
@@ -83,7 +78,6 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
 
     let partnerIds = (rootProfile?.partners as string[]) || [];
 
-    /** Parceiro convidado: vínculos em `profiles.partners` do próprio perfil (ex.: nova clínica) não estão no array do assinante. */
     if (user.ownerId && user.ownerId !== user.id) {
       const { data: selfProfile } = await supabase
         .from('profiles')
@@ -237,7 +231,6 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
       if (!user?.id) {
         return { success: false, message: 'Sessão inválida.' };
       }
-      /** Quem assina / dono do tenant — não o perfil de recepção ou membro interno. */
       const requesterProfileId =
         user.ownerId && user.ownerId !== user.id ? user.ownerId : user.id;
 
@@ -248,6 +241,10 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
         .maybeSingle();
       const requesterType: 'vet' | 'clinic' = reqProf?.role === 'vet' ? 'vet' : 'clinic';
 
+      // 1. Busca o ID do parceiro alvo para garantir o vínculo manual caso a RPC falhe silenciosamente
+      const targetPartner = await findPartnerByEmail(email);
+
+      // 2. Executa a RPC
       const { data, error } = await supabase.rpc('link_partner_by_email', {
         target_email: email.trim().toLowerCase(),
         requester_id: requesterProfileId,
@@ -270,15 +267,33 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
         payload = data as typeof payload;
       }
 
-      if (payload.success === true) {
+      const isAlreadyLinkedMsg = payload.message?.toLowerCase().includes('já') && payload.message?.toLowerCase().includes('vincul');
+
+      // 3. Fallback Manual: Se a RPC deu sucesso ou disse que já estava vinculado, garantimos o ID no array 'partners' do solicitante
+      if (payload.success === true || isAlreadyLinkedMsg) {
+        if (targetPartner.found && targetPartner.id) {
+          const { data: myProfile } = await supabase
+            .from('profiles')
+            .select('partners')
+            .eq('id', requesterProfileId)
+            .maybeSingle();
+            
+          const currentPartners = myProfile?.partners || [];
+          if (!currentPartners.includes(targetPartner.id)) {
+            await supabase
+              .from('profiles')
+              .update({ partners: [...currentPartners, targetPartner.id] })
+              .eq('id', requesterProfileId);
+          }
+        }
+
         await loadRegistry();
-        return { success: true, name: payload.name };
+        return { success: true, name: payload.name || targetPartner.name || '' };
       }
+      
       return {
         success: false,
-        message:
-          (typeof payload.message === 'string' && payload.message) ||
-          'Não foi possível concluir o vínculo. Verifique permissões no Supabase (RPC link_partner_by_email).'
+        message: payload.message || 'Não foi possível concluir o vínculo.'
       };
     } catch (err: unknown) {
       console.error("Erro ao vincular parceiro:", err);
@@ -291,7 +306,6 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
     try {
       const cleanEmail = email.trim().toLowerCase();
       
-      // Usando .limit(1) para evitar falhas de múltiplos registros
       const { data: profile } = await supabase
         .from('profiles')
         .select('id, name, role')
@@ -302,8 +316,6 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
         return { found: true, name: profile[0].name, role: profile[0].role, id: profile[0].id };
       }
 
-      // Se o RLS bloqueou a leitura do profile (ex: é membro interno de outra clínica),
-      // buscamos na tabela pública e retornamos o profile_id para que a interface não quebre.
       const { data: vet } = await supabase
         .from('veterinarians')
         .select('id, name, profile_id')

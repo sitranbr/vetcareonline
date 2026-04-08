@@ -30,7 +30,6 @@ export const AdminUserForm = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formInitialized, setFormInitialized] = useState(false);
 
-  /** Evita reinicializar o formulário a cada mudança de referência em `users` (ex.: refreshUsers), o que recolocava o nível em "Administrador". */
   const lastHydratedKeyRef = useRef<string | null>(null);
 
   const [memberType, setMemberType] = useState<MemberType>('internal');
@@ -209,7 +208,6 @@ export const AdminUserForm = () => {
       description: 'Configure as permissões manualmente',
       permissions: defaultPermissions
     },
-    /** Padrão para parceiro veterinário: operação e laudos; sem gestão de tabela de preços. */
     partnerVet: {
       name: 'Parceiro — Veterinário',
       description: 'Resumo operacional, exames, laudos e relatórios; precificação definida pelo assinante.',
@@ -233,7 +231,6 @@ export const AdminUserForm = () => {
         visualizar_estatisticas: true,
       }
     },
-    /** Padrão para parceiro clínica: sem emissão de laudo; sem tabela de preços. */
     partnerClinic: {
       name: 'Parceiro — Clínica',
       description: 'Resumo operacional, exames, impressão e exclusão dos próprios; sem laudo veterinário.',
@@ -402,8 +399,6 @@ export const AdminUserForm = () => {
         navigate('/users', { replace: true });
         return;
       }
-      // Mesmo padrão da edição: não reinicializar quando `users`/`currentUser` atualizam (ex.: refreshUsers),
-      // senão setExpandedSections(new Set()) fecha os cards logo após "Expandir".
       if (lastHydratedKeyRef.current === '__new__') {
         return;
       }
@@ -628,23 +623,6 @@ export const AdminUserForm = () => {
 
           if (linkResult.success) {
             setFormSuccess(`Parceiro ${linkResult.name || ''} conectado com sucesso!`);
-            await refreshProfile();
-            await refreshUsers();
-            await refreshRegistry();
-            setTimeout(() => {
-              goToList();
-            }, 2000);
-            setIsSaving(false);
-            return;
-          }
-
-          const alreadyLinkedMsg = (linkResult.message || '').toLowerCase();
-          if (
-            linkResult.message &&
-            (alreadyLinkedMsg.includes('já está vinculado') ||
-              (alreadyLinkedMsg.includes('já') && alreadyLinkedMsg.includes('vincul')))
-          ) {
-            setFormSuccess("Este parceiro já está conectado à sua conta.");
             await refreshProfile();
             await refreshUsers();
             await refreshRegistry();

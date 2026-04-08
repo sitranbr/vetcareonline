@@ -16,7 +16,6 @@ interface AuthContextType {
   resetPassword: (email: string) => Promise<void>;
   isAuthenticated: boolean;
   isLoading: boolean;
-  /** Perfil do banco aplicado ao `user` (sessão com JWT não basta — evita UI com permissões provisórias). */
   isProfileReady: boolean;
   profileError: string | null;
   getDefaultPermissions: (level: number) => UserPermissions;
@@ -30,7 +29,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-/** Mensagem legível para falhas da RPC delete_user_completely (ex.: FK owner_id em clínicas com equipe). */
 const formatDeleteUserRpcError = (err: unknown): string => {
   const o = err && typeof err === 'object' ? (err as Record<string, unknown>) : null;
   const msg = typeof o?.message === 'string' ? o.message : '';
@@ -47,7 +45,6 @@ const formatDeleteUserRpcError = (err: unknown): string => {
   return 'Erro ao excluir usuário.';
 };
 
-/** Suspensão administrativa: perfil bloqueado ou assinante (owner) bloqueado. */
 const getProfileAccessDeniedMessage = async (profile: {
   id: string;
   access_blocked?: boolean | null;
@@ -80,25 +77,17 @@ const getDefaultPermissions = (level: number): UserPermissions => {
       return { view_financials: true, manage_prices: false, edit_reports: true, export_reports: true, bypass_report_password: true, delete_exams: true, bypass_delete_password: true, manage_users: true, manage_settings: false };
     case 4: // Clinic (Tenant or Guest)
       return { view_financials: true, manage_prices: true, edit_reports: false, export_reports: true, bypass_report_password: true, delete_exams: true, bypass_delete_password: true, manage_users: true, manage_settings: false };
-    default: // Reception (Level 5) - Equipe interna: quem opera o sistema, herda visão operacional do assinante
+    default: // Reception (Level 5)
       return { view_financials: true, manage_prices: false, edit_reports: false, export_reports: true, bypass_report_password: false, delete_exams: true, bypass_delete_password: false, manage_users: false, manage_settings: false, criar_exame: true };
   }
 };
 
-/**
- * Mescla permissões salvas (JWT, coluna JSON parcial ou `{}`) com o default do nível.
- * Evita objeto truthy vazio/incompleto substituir o baseline e esconder abas até dar F5.
- */
 const mergePermissionsWithDefaults = (level: number, stored: unknown): UserPermissions => {
   const base = getDefaultPermissions(level);
   if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return base;
   return { ...base, ...(stored as Partial<UserPermissions>) };
 };
 
-/**
- * `isMe` ausente não pode ser tratado como falso: em OperationalDashboard, `!undefined` ativava
- * "modo parceiro" e escondia abas (Relatórios, etc.) até F5.
- */
 const withTenantDefaults = (t: TenantContext): TenantContext => ({
   ...t,
   isMe: t.isMe === false ? false : true,
@@ -108,7 +97,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  /** true após getSession sem login ou após hydrateUserProfile. Início false até saber o estado da sessão. */
   const [isProfileReady, setIsProfileReady] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   
@@ -154,7 +142,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (isClinicTierUser(currentUser) || isVetTierUser(currentUser)) {
          const tableName = isClinicTierUser(currentUser) ? 'clinics' : 'veterinarians';
-         // Usando .limit(1) para evitar falhas caso existam registros duplicados
          const { data: byProfile } = await supabase.from(tableName).select('id, name').eq('profile_id', currentUser.id).limit(1);
 
          if (byProfile && byProfile.length > 0) {
@@ -166,7 +153,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
            if (byEmail && byEmail.length > 0) {
              myEntityId = byEmail[0].id;
              myEntityName = byEmail[0].name;
-             // Vincula o profile_id para garantir que as configurações futuras funcionem
              await supabase.from(tableName).update({ profile_id: currentUser.id }).eq('id', byEmail[0].id);
            }
          }
@@ -394,9 +380,55 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           if (mergedPartnerIds.length > 0) {
             const { data: partnerProfiles } = await supabase.from('profiles').select('*').in('id', mergedPartnerIds);
             
-            if (partnerProfiles) {
+            let fetchedProfiles = partnerProfiles || [];
+            const fetchedIds = new Set(fetchedProfiles.map(p => p.id));
+            const missingIds = mergedPartnerIds.filter(id => !fetchedIds.has(id));
+
+            if (missingIds.length > 0) {
+              const { data: missingVets } = await supabase.from('veterinarians').select('profile_id, name, email').in('profile_id', missingIds);
+              const { data: missingClinics } = await supabase.from('clinics').select('profile_id, name, email').in('profile_id', missingIds);
+
+              const mockProfiles: any[] = [];
+              if (missingVets) {
+                missingVets.forEach(v => {
+                  if (v.profile_id) {
+                    mockProfiles.push({
+                      id: v.profile_id,
+                      name: v.name || 'Usuário',
+                      email: v.email || '',
+                      role: 'vet',
+                      level: 3,
+                      owner_id: v.profile_id, 
+                      permissions: {}, 
+                      partners: [],
+                      access_blocked: false
+                    });
+                  }
+                });
+              }
+              if (missingClinics) {
+                missingClinics.forEach(c => {
+                  if (c.profile_id && !mockProfiles.some(mp => mp.id === c.profile_id)) {
+                    mockProfiles.push({
+                      id: c.profile_id,
+                      name: c.name || 'Usuário',
+                      email: c.email || '',
+                      role: 'clinic',
+                      level: 4,
+                      owner_id: c.profile_id, 
+                      permissions: {},
+                      partners: [],
+                      access_blocked: false
+                    });
+                  }
+                });
+              }
+              fetchedProfiles = [...fetchedProfiles, ...mockProfiles];
+            }
+
+            if (fetchedProfiles.length > 0) {
               const existingIds = new Set(allProfiles.map(p => p.id));
-              const newPartners = partnerProfiles.filter(p => !existingIds.has(p.id));
+              const newPartners = fetchedProfiles.filter(p => !existingIds.has(p.id));
               allProfiles = [...allProfiles, ...newPartners];
             }
           }
@@ -407,7 +439,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (allProfiles) {
         setUsers(allProfiles.map(p => ({
-          id: p.id, name: p.name, email: p.email, username: p.email, role: p.role, level: p.level, ownerId: p.owner_id, partners: p.partners || null, permissions: p.permissions, signatureUrl: p.signature_url,
+          id: p.id, name: p.name || 'Usuário', email: p.email || '', username: p.email || '', role: p.role, level: p.level, ownerId: p.owner_id, partners: p.partners || null, permissions: p.permissions, signatureUrl: p.signature_url,
           accessBlocked: !!p.access_blocked
         })));
       }
@@ -481,7 +513,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       await supabase.from('profiles').insert(profileData);
       if (newUser.role === 'clinic' || newUser.role === 'vet') {
         const tableName = newUser.role === 'clinic' ? 'clinics' : 'veterinarians';
-        // Usando .limit(1) para evitar falhas
         const { data: existing } = await supabase.from(tableName).select('id').eq('email', newUser.email).limit(1);
         if (existing && existing.length > 0) { 
           await supabase.from(tableName).update({ profile_id: data.user.id }).eq('id', existing[0].id); 

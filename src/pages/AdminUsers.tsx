@@ -22,7 +22,7 @@ export const AdminUsers = () => {
 
   const myUsers = users.filter(u => 
     u.id !== currentUser?.id &&
-    (u.name.toLowerCase().includes(searchTerm.toLowerCase()) || u.email.toLowerCase().includes(searchTerm.toLowerCase()))
+    ((u.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (u.email || '').toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const canCreateMember = () => {
@@ -102,7 +102,7 @@ export const AdminUsers = () => {
                         user.role === 'clinic' ? 'bg-blue-500' : 
                         'bg-gray-400'
                       }`}>
-                        {user.name.charAt(0).toUpperCase()}
+                        {(user.name || 'U').charAt(0).toUpperCase()}
                       </div>
                       <div className="ml-3">
                         <div className="text-sm font-medium text-gray-900 flex items-center gap-1">
