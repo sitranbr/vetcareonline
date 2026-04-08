@@ -302,24 +302,26 @@ export const RegistryProvider = ({ children }: { children: ReactNode }) => {
         return { found: true, name: profile[0].name, role: profile[0].role, id: profile[0].id };
       }
 
+      // Se o RLS bloqueou a leitura do profile (ex: é membro interno de outra clínica),
+      // buscamos na tabela pública e retornamos o profile_id para que a interface não quebre.
       const { data: vet } = await supabase
         .from('veterinarians')
-        .select('id, name')
+        .select('id, name, profile_id')
         .eq('email', cleanEmail)
         .limit(1);
       
       if (vet && vet.length > 0) {
-        return { found: true, name: vet[0].name, role: 'vet' };
+        return { found: true, name: vet[0].name, role: 'vet', id: vet[0].profile_id };
       }
 
       const { data: clinic } = await supabase
         .from('clinics')
-        .select('id, name')
+        .select('id, name, profile_id')
         .eq('email', cleanEmail)
         .limit(1);
 
       if (clinic && clinic.length > 0) {
-        return { found: true, name: clinic[0].name, role: 'clinic' };
+        return { found: true, name: clinic[0].name, role: 'clinic', id: clinic[0].profile_id };
       }
 
       return { found: false };
