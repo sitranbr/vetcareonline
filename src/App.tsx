@@ -67,7 +67,7 @@ const LoadingScreen = () => {
 };
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, isProfileReady } = useAuth();
 
   if (isLoading) {
     return <LoadingScreen />;
@@ -76,6 +76,12 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
+
+  /** Não montar o app com JWT/metadata — só após profiles.permissions aplicado (AuthContext). */
+  if (!isProfileReady) {
+    return <LoadingScreen />;
+  }
+
   return <>{children}</>;
 };
 

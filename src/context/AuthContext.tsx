@@ -84,6 +84,16 @@ const getDefaultPermissions = (level: number): UserPermissions => {
   }
 };
 
+/**
+ * Mescla permissões salvas (JWT, coluna JSON parcial ou `{}`) com o default do nível.
+ * Evita objeto truthy vazio/incompleto substituir o baseline e esconder abas até dar F5.
+ */
+const mergePermissionsWithDefaults = (level: number, stored: unknown): UserPermissions => {
+  const base = getDefaultPermissions(level);
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return base;
+  return { ...base, ...(stored as Partial<UserPermissions>) };
+};
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
@@ -110,7 +120,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       role: role,
       level: level,
       ownerId: metadata.ownerId || null,
-      permissions: metadata.permissions || getDefaultPermissions(level)
+      permissions: mergePermissionsWithDefaults(level, metadata.permissions)
     };
   };
 
@@ -192,7 +202,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     isHydratingRef.current = true;
     try {
       setProfileError(null);
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', sessionUser.id).maybeSingle();
+      let profile =
+        (await supabase.from('profiles').select('*').eq('id', sessionUser.id).maybeSingle()).data ?? null;
+      if (!profile) {
+        await new Promise((r) => setTimeout(r, 400));
+        profile =
+          (await supabase.from('profiles').select('*').eq('id', sessionUser.id).maybeSingle()).data ?? null;
+      }
       if (profile) {
         const denied = await getProfileAccessDeniedMessage(profile);
         if (denied) {
@@ -201,22 +217,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setCurrentTenant(null);
           userIdRef.current = null;
           setProfileError(denied);
+          setIsProfileReady(true);
           return;
         }
         const dbUser: User = {
           id: profile.id, email: profile.email, name: profile.name, username: profile.email, role: profile.role, level: profile.level, ownerId: profile.owner_id, partners: profile.partners || null,
-          permissions: profile.permissions || getDefaultPermissions(profile.level),
+          permissions: mergePermissionsWithDefaults(profile.level, profile.permissions),
           signatureUrl: profile.signature_url,
           accessBlocked: !!profile.access_blocked
         };
         setUser(dbUser);
         await loadLinkedTenants(dbUser);
+        setIsProfileReady(true);
+        return;
       }
+      setProfileError('Não foi possível carregar o perfil. Verifique a conexão e tente novamente.');
+      setIsProfileReady(true);
     } catch (err) {
       setProfileError("Modo offline/limitado ativado.");
+      setIsProfileReady(true);
     } finally {
       isHydratingRef.current = false;
-      setIsProfileReady(true);
     }
   };
 
@@ -289,7 +310,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
         const dbUser: User = {
           id: profile.id, email: profile.email, name: profile.name, username: profile.email, role: profile.role, level: profile.level, ownerId: profile.owner_id, partners: profile.partners || null,
-          permissions: profile.permissions || getDefaultPermissions(profile.level),
+          permissions: mergePermissionsWithDefaults(profile.level, profile.permissions),
           signatureUrl: profile.signature_url,
           accessBlocked: !!profile.access_blocked
         };
@@ -442,7 +463,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (error) return { error: error.message };
     }
     await refreshUsers();
-    if (user?.id === id) setUser(prev => prev ? { ...prev, ...data } : null);
+    if (user?.id === id) {
+      setUser((prev) => {
+        if (!prev) return null;
+        const next: User = { ...prev, ...data };
+        if (data.permissions !== undefined) {
+          next.permissions = mergePermissionsWithDefaults(prev.level, data.permissions);
+        }
+        return next;
+      });
+    }
     return {};
   };
 
