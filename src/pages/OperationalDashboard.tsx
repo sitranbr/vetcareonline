@@ -17,6 +17,7 @@ import { clsx } from 'clsx';
 import { startOfMonth, endOfMonth, format, parseISO, isValid } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { canManageTeamAccess } from '../lib/teamPermissions';
+import { isClinicTierUser, isVetTierUser } from '../lib/subscriberTier';
 import ReactECharts from 'echarts-for-react';
 
 const getTodayString = () => new Date().toISOString().split('T')[0];
@@ -294,7 +295,7 @@ export const OperationalDashboard = () => {
 
   /** Nomes dos perfis em `user.partners` (seletor de contexto para assinante clínica). */
   useEffect(() => {
-    if (!user?.id || user.role !== 'clinic' || !user.partners?.length) {
+    if (!user?.id || !isClinicTierUser(user) || !user.partners?.length) {
       setPartnerContextOptions([]);
       return;
     }
@@ -321,7 +322,7 @@ export const OperationalDashboard = () => {
    * (dados do assinante). Remove chave legada para não reaparecer após F5.
    */
   useEffect(() => {
-    if (!user?.id || user.role !== 'clinic') return;
+    if (!user?.id || !isClinicTierUser(user)) return;
     if (clinicContextHydratedRef.current) return;
     clinicContextHydratedRef.current = true;
     try {
@@ -333,7 +334,7 @@ export const OperationalDashboard = () => {
   }, [user?.id, user?.role]);
 
   useEffect(() => {
-    if (!user?.id || user.role !== 'clinic') return;
+    if (!user?.id || !isClinicTierUser(user)) return;
     if (clinicPartnerContextProfileId && user.partners?.length && !user.partners.includes(clinicPartnerContextProfileId)) {
       setClinicPartnerContextProfileId(null);
     }
@@ -361,6 +362,38 @@ export const OperationalDashboard = () => {
         return;
       }
 
+      const userEmail = user.email.toLowerCase().trim();
+
+      if (isClinicTierUser(user)) {
+        const clinicByProfile = clinics.find(c => c.profileId === user.id);
+        if (clinicByProfile) {
+          setLoggedUserEntity({ type: 'clinic', id: clinicByProfile.id });
+          setFormData(prev => ({ ...prev, clinicId: clinicByProfile.id }));
+          return;
+        }
+        const clinicByEmail = clinics.find(c => c.email?.toLowerCase().trim() === userEmail);
+        if (clinicByEmail) {
+          setLoggedUserEntity({ type: 'clinic', id: clinicByEmail.id });
+          setFormData(prev => ({ ...prev, clinicId: clinicByEmail.id }));
+          return;
+        }
+      }
+
+      if (isVetTierUser(user)) {
+        const vetByProfile = veterinarians.find(v => v.profileId === user.id);
+        if (vetByProfile) {
+          setLoggedUserEntity({ type: 'vet', id: vetByProfile.id });
+          setFormData(prev => ({ ...prev, veterinarianId: vetByProfile.id }));
+          return;
+        }
+        const vetByEmail = veterinarians.find(v => v.email?.toLowerCase().trim() === userEmail);
+        if (vetByEmail) {
+          setLoggedUserEntity({ type: 'vet', id: vetByEmail.id });
+          setFormData(prev => ({ ...prev, veterinarianId: vetByEmail.id }));
+          return;
+        }
+      }
+
       const vetByProfile = veterinarians.find(v => v.profileId === user.id);
       if (vetByProfile) {
         setLoggedUserEntity({ type: 'vet', id: vetByProfile.id });
@@ -375,19 +408,17 @@ export const OperationalDashboard = () => {
         return;
       }
 
-      const userEmail = user.email.toLowerCase().trim();
-      
       const vetByEmail = veterinarians.find(v => v.email?.toLowerCase().trim() === userEmail);
-      if (vetByEmail) { 
-        setLoggedUserEntity({ type: 'vet', id: vetByEmail.id }); 
-        setFormData(prev => ({ ...prev, veterinarianId: vetByEmail.id })); 
-        return; 
+      if (vetByEmail) {
+        setLoggedUserEntity({ type: 'vet', id: vetByEmail.id });
+        setFormData(prev => ({ ...prev, veterinarianId: vetByEmail.id }));
+        return;
       }
-      
+
       const clinicByEmail = clinics.find(c => c.email?.toLowerCase().trim() === userEmail);
-      if (clinicByEmail) { 
-        setLoggedUserEntity({ type: 'clinic', id: clinicByEmail.id }); 
-        setFormData(prev => ({ ...prev, clinicId: clinicByEmail.id })); 
+      if (clinicByEmail) {
+        setLoggedUserEntity({ type: 'clinic', id: clinicByEmail.id });
+        setFormData(prev => ({ ...prev, clinicId: clinicByEmail.id }));
       }
     }
   }, [user, veterinarians, clinics, currentTenant]);
@@ -404,16 +435,12 @@ export const OperationalDashboard = () => {
 
   /** Assinante veterinário raiz: conta própria, sem vínculo obrigatório a clínica/outro vet. */
   const isIndependentVetSubscriber = useMemo(() => {
-    return (
-      user?.role === 'vet' &&
-      user?.level === 3 &&
-      (!user.ownerId || user.ownerId === user.id)
-    );
+    return isVetTierUser(user) && (!user?.ownerId || user.ownerId === user.id);
   }, [user]);
 
   /** Assinante clínica (conta raiz): pode usar seletor de contexto próprio vs parceiro em profiles.partners. */
   const isRootClinicSubscriber = useMemo(() => {
-    if (user?.role !== 'clinic') return false;
+    if (!isClinicTierUser(user)) return false;
     if (user.ownerId && user.ownerId !== user.id) return false;
     const cid =
       loggedUserEntity?.type === 'clinic'
@@ -422,7 +449,23 @@ export const OperationalDashboard = () => {
           ? currentTenant.id
           : null;
     return !!cid;
-  }, [user?.role, user?.ownerId, user?.id, loggedUserEntity, currentTenant]);
+  }, [user, loggedUserEntity, currentTenant]);
+
+  /**
+   * Dropdown "Minha clínica / Parceiro" na lista de exames: qualquer assinante clínica (nível 4)
+   * com parceiros e entidade clínica resolvida — inclui contas com vínculo de parceria (owner_id).
+   */
+  const showClinicPartnerContextDropdown = useMemo(() => {
+    if (!isClinicTierUser(user)) return false;
+    if (!user?.partners?.length) return false;
+    const cid =
+      loggedUserEntity?.type === 'clinic'
+        ? loggedUserEntity.id
+        : currentTenant?.type === 'clinic'
+          ? currentTenant.id
+          : null;
+    return !!cid && partnerContextOptions.length > 0;
+  }, [user, loggedUserEntity, currentTenant, partnerContextOptions.length]);
 
   /**
    * IDs em `veterinarians` cujo profile está em `user.partners` (ex.: vet assinante parceiro).
@@ -451,7 +494,7 @@ export const OperationalDashboard = () => {
       } else {
         isVetContext = true;
       }
-    } else if (user?.role === 'clinic' || loggedUserEntity?.type === 'clinic' || currentTenant?.type === 'clinic') {
+    } else if (isClinicTierUser(user) || loggedUserEntity?.type === 'clinic' || currentTenant?.type === 'clinic') {
       targetClinicId = loggedUserEntity?.type === 'clinic' ? loggedUserEntity.id : (currentTenant?.type === 'clinic' ? currentTenant.id : null);
       if (!targetClinicId && user?.id) {
          targetClinicId = clinics.find(c => c.profileId === user.id)?.id || null;
@@ -501,12 +544,12 @@ export const OperationalDashboard = () => {
           targetClinicId = ownerClinic.id;
         }
       }
-    } else if (user?.role === 'vet' || loggedUserEntity?.type === 'vet' || currentTenant?.type === 'vet') {
+    } else if (isVetTierUser(user) || loggedUserEntity?.type === 'vet' || currentTenant?.type === 'vet') {
       targetVetId = loggedUserEntity?.type === 'vet' ? loggedUserEntity.id : (currentTenant?.type === 'vet' ? currentTenant.id : null);
       if (!targetVetId && user?.id) {
          targetVetId = veterinarians.find(v => v.profileId === user.id)?.id || null;
       }
-    } else if (user?.role === 'clinic' || loggedUserEntity?.type === 'clinic' || currentTenant?.type === 'clinic') {
+    } else if (isClinicTierUser(user) || loggedUserEntity?.type === 'clinic' || currentTenant?.type === 'clinic') {
       isClinicContext = true;
       targetClinicId = loggedUserEntity?.type === 'clinic' ? loggedUserEntity.id : (currentTenant?.type === 'clinic' ? currentTenant.id : null);
     }
@@ -681,14 +724,26 @@ export const OperationalDashboard = () => {
             : null;
 
       const isRootClinicSubscriber =
-        user?.role === 'clinic' &&
+        isClinicTierUser(user) &&
         (!user?.ownerId || user.ownerId === user.id) &&
         !!myClinicEntityId;
 
       const guestPartner = user?.ownerId && user.ownerId !== user.id;
       if (guestPartner && loggedUserEntity?.type === 'clinic' && loggedUserEntity.id) {
-        /** Parceiro clínica: só exames realizados nesta clínica. */
-        query = query.eq('clinic_id', loggedUserEntity.id);
+        /** Parceiro clínica: só exames realizados nesta clínica (com subfiltro de parceiro opcional). */
+        if (!clinicPartnerContextProfileId) {
+          query = query.eq('clinic_id', loggedUserEntity.id);
+        } else {
+          const partnerVet = veterinarians.find((v) => v.profileId === clinicPartnerContextProfileId);
+          const partnerClinic = clinics.find((c) => c.profileId === clinicPartnerContextProfileId);
+          if (partnerVet) {
+            query = query.eq('clinic_id', loggedUserEntity.id).eq('veterinarian_id', partnerVet.id);
+          } else if (partnerClinic) {
+            query = query.eq('clinic_id', partnerClinic.id);
+          } else {
+            query = query.eq('clinic_id', loggedUserEntity.id);
+          }
+        }
       } else if (isPartnerView && loggedUserEntity?.type === 'vet') {
         const myVetIds = new Set<string>();
         if (loggedUserEntity.id) myVetIds.add(loggedUserEntity.id);
@@ -754,7 +809,7 @@ export const OperationalDashboard = () => {
       const isMainSubscriberRoot =
         !!targetUserId &&
         (!user?.ownerId || user.ownerId === user.id) &&
-        (user?.role === 'vet' || user?.role === 'clinic');
+        (isVetTierUser(user) || isClinicTierUser(user));
       if (isMainSubscriberRoot) {
         pricePromises.push(safeFetch(supabase.rpc('get_all_prices_bypass_rls', { p_user_id: targetUserId })));
       }
@@ -823,7 +878,7 @@ export const OperationalDashboard = () => {
             ? currentTenant.id
             : null;
       const isRootClinicForPrices =
-        user?.role === 'clinic' &&
+        isClinicTierUser(user) &&
         (!user?.ownerId || user.ownerId === user.id) &&
         !!myClinicForPriceScope &&
         pricesData.length > 0;
@@ -970,7 +1025,7 @@ export const OperationalDashboard = () => {
     const canCreateExam =
       (level1 || (hasCriarExameSub ? !!p?.criar_exame : !!p?.edit_reports)) && !isPartnerView;
 
-    const isClinicSubscriber = user?.role === 'clinic';
+    const isClinicSubscriber = isClinicTierUser(user);
 
     /**
      * Edição de dados do exame (formulário): veterinários e clínicas conforme permissões.
@@ -1082,7 +1137,7 @@ export const OperationalDashboard = () => {
    * Assinante clínica: exames da própria operação (não os realizados na unidade por veterinário parceiro em profiles.partners).
    */
   const examBelongsToSubscriberClinic = (exam: Exam): boolean => {
-    if (user?.role !== 'clinic') return true;
+    if (!isClinicTierUser(user)) return true;
     if (!loggedUserEntity || loggedUserEntity.type !== 'clinic') return false;
     if ((exam.clinicId || '').trim() !== (loggedUserEntity.id || '').trim()) return false;
     const vid = (exam.veterinarianId || '').trim();
@@ -1093,7 +1148,7 @@ export const OperationalDashboard = () => {
 
   const examCanDeleteRow = (exam: Exam): boolean => {
     if (user?.level === 1) return true;
-    if (user?.role === 'clinic' && !examBelongsToSubscriberClinic(exam)) return false;
+    if (isClinicTierUser(user) && !examBelongsToSubscriberClinic(exam)) return false;
     const p = user?.permissions;
     if (!p?.delete_exams) return false;
     if (!hasDeleteSubPermissions) return true;
@@ -1348,7 +1403,7 @@ export const OperationalDashboard = () => {
         return;
       }
       const editedExam = exams.find((e) => e.id === editingExamId);
-      if (editedExam && user?.role === 'clinic' && !examBelongsToSubscriberClinic(editedExam)) {
+      if (editedExam && isClinicTierUser(user) && !examBelongsToSubscriberClinic(editedExam)) {
         alert('Só é possível editar exames registrados na sua clínica.');
         return;
       }
@@ -1512,7 +1567,7 @@ export const OperationalDashboard = () => {
 
   const handleEditExam = (exam: Exam) => {
     if (!canEditExamDetails) return;
-    if (user?.role === 'clinic' && !examBelongsToSubscriberClinic(exam)) return;
+    if (isClinicTierUser(user) && !examBelongsToSubscriberClinic(exam)) return;
     setEditingExamId(exam.id);
     setFormData({
       date: exam.date,
@@ -1532,7 +1587,7 @@ export const OperationalDashboard = () => {
 
   const handleDeleteExam = async (id: string) => {
     const target = exams.find((e) => e.id === id);
-    if (target && user?.role === 'clinic' && !examBelongsToSubscriberClinic(target)) {
+    if (target && isClinicTierUser(user) && !examBelongsToSubscriberClinic(target)) {
       alert('Só é possível excluir exames registrados na sua clínica.');
       setConfirmationState((prev) => ({ ...prev, isOpen: false }));
       return;
@@ -1550,7 +1605,7 @@ export const OperationalDashboard = () => {
 
   const confirmDelete = (id: string) => {
     const row = exams.find((e) => e.id === id);
-    if (row && user?.role === 'clinic' && !examBelongsToSubscriberClinic(row)) {
+    if (row && isClinicTierUser(user) && !examBelongsToSubscriberClinic(row)) {
       alert('Só é possível excluir exames registrados na sua clínica.');
       return;
     }
@@ -2125,7 +2180,7 @@ export const OperationalDashboard = () => {
         
         {activeTab === 'list' && canViewExamList && (
           <div className="p-6">
-            {isRootClinicSubscriber && partnerContextOptions.length > 0 && (
+            {showClinicPartnerContextDropdown && (
               <div className="mb-6 bg-white border border-gray-200 rounded-xl shadow-sm px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 animate-fade-in">
                 <div className="flex items-start gap-3 min-w-0">
                   <div className="p-2 bg-petcare-bg rounded-lg shrink-0">
@@ -2931,7 +2986,7 @@ export const OperationalDashboard = () => {
 
                         /** "Minha clínica" (sem contexto parceiro): tabela não lista linhas só do vet parceiro; o formulário ainda usa essas regras no select de exames. */
                         if (
-                          user?.role === 'clinic' &&
+                          isClinicTierUser(user) &&
                           (!user?.ownerId || user.ownerId === user.id) &&
                           loggedUserEntity?.type === 'clinic' &&
                           !clinicPartnerContextProfileId &&

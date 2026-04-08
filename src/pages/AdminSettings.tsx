@@ -4,6 +4,7 @@ import { useSettings } from '../context/SettingsContext';
 import { Save, Building2, Mail, Phone, MapPin, FileText, Upload, Lock, User, AlertCircle, CheckCircle2, Shield, Loader2, PenTool } from 'lucide-react';
 import { uploadBase64Image } from '../utils/storage';
 import { supabase } from '../lib/supabase';
+import { isVetTierUser } from '../lib/subscriberTier';
 
 export const AdminSettings = () => {
   const { user, updateAccount, refreshProfile } = useAuth();
@@ -243,8 +244,7 @@ export const AdminSettings = () => {
         </div>
       )}
 
-      {user?.role === 'vet' &&
-        user?.level === 3 &&
+      {isVetTierUser(user) &&
         (!user.ownerId || user.ownerId === user.id) && (
           <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 flex items-start gap-3 text-sky-900 text-sm">
             <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-sky-600" />

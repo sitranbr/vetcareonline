@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react';
 import { User, UserPermissions, TenantContext } from '../types';
+import { isClinicTierUser, isVetTierUser } from '../lib/subscriberTier';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { AuthError, createClient } from '@supabase/supabase-js';
 
@@ -128,7 +129,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const provisionalTenant: TenantContext = {
       id: tempUser.id,
       name: tempUser.name,
-      type: tempUser.role === 'vet' ? 'vet' : 'clinic',
+      type: isVetTierUser(tempUser) && !isClinicTierUser(tempUser) ? 'vet' : 'clinic',
       isMe: true
     };
     setCurrentTenant(prev => prev || provisionalTenant);
@@ -139,10 +140,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       let myEntityId = currentUser.id;
       let myEntityName = currentUser.name;
-      let myType: 'vet' | 'clinic' = currentUser.role === 'vet' ? 'vet' : 'clinic';
+      let myType: 'vet' | 'clinic' =
+        isVetTierUser(currentUser) && !isClinicTierUser(currentUser) ? 'vet' : 'clinic';
 
-      if (currentUser.role === 'clinic' || currentUser.role === 'vet') {
-         const tableName = currentUser.role === 'clinic' ? 'clinics' : 'veterinarians';
+      if (isClinicTierUser(currentUser) || isVetTierUser(currentUser)) {
+         const tableName = isClinicTierUser(currentUser) ? 'clinics' : 'veterinarians';
          // Usando .limit(1) para evitar falhas caso existam registros duplicados
          const { data: byProfile } = await supabase.from(tableName).select('id, name').eq('profile_id', currentUser.id).limit(1);
 
@@ -192,7 +194,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setCurrentTenant(myTenant);
     } catch (error) {
       if (!currentTenant) {
-        setCurrentTenant({ id: currentUser.id, name: currentUser.name, type: currentUser.role === 'vet' ? 'vet' : 'clinic', isMe: true });
+        setCurrentTenant({
+          id: currentUser.id,
+          name: currentUser.name,
+          type: isVetTierUser(currentUser) && !isClinicTierUser(currentUser) ? 'vet' : 'clinic',
+          isMe: true,
+        });
       }
     }
   };

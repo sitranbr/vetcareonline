@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { clsx } from 'clsx';
 import { canManageTeamAccess } from '../lib/teamPermissions';
+import { getSubscriberTypeBadgeLabel } from '../lib/subscriberTier';
 
 export const Layout = () => {
   const { user, logout, profileError } = useAuth();
@@ -133,7 +134,7 @@ export const Layout = () => {
                   <p className="text-sm font-bold text-gray-700">{user?.name}</p>
                   <div className="flex items-center justify-end gap-1">
                     <span className="text-[10px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 font-bold uppercase">
-                      {user?.role === 'admin' ? 'Super Admin' : user?.role === 'vet' ? 'Veterinário' : user?.role === 'clinic' ? 'Clínica' : 'Recepção'}
+                      {getSubscriberTypeBadgeLabel(user)}
                     </span>
                   </div>
                 </div>
