@@ -423,8 +423,9 @@ export const OperationalDashboard = () => {
     }
   }, [user, veterinarians, clinics, currentTenant]);
 
+  /** Só "visualização de parceiro" quando isMe é explicitamente false (undefined ≠ parceiro). */
   const isPartnerView = useMemo(() => {
-    return currentTenant && !currentTenant.isMe;
+    return currentTenant != null && currentTenant.isMe === false;
   }, [currentTenant]);
 
   /** Conta de parceiro convidado (veterinário/clínica vinculados ao assinante via owner_id). */

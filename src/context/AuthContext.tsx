@@ -95,6 +95,15 @@ const mergePermissionsWithDefaults = (level: number, stored: unknown): UserPermi
   return { ...base, ...(stored as Partial<UserPermissions>) };
 };
 
+/**
+ * `isMe` ausente não pode ser tratado como falso: em OperationalDashboard, `!undefined` ativava
+ * "modo parceiro" e escondia abas (Relatórios, etc.) até F5.
+ */
+const withTenantDefaults = (t: TenantContext): TenantContext => ({
+  ...t,
+  isMe: t.isMe === false ? false : true,
+});
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
@@ -132,8 +141,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       type: isVetTierUser(tempUser) && !isClinicTierUser(tempUser) ? 'vet' : 'clinic',
       isMe: true
     };
-    setCurrentTenant(prev => prev || provisionalTenant);
-    setAvailableTenants(prev => prev.length > 0 ? prev : [provisionalTenant]);
+    setCurrentTenant((prev) => prev || withTenantDefaults(provisionalTenant));
+    setAvailableTenants((prev) => (prev.length > 0 ? prev : [withTenantDefaults(provisionalTenant)]));
   };
 
   const loadLinkedTenants = async (currentUser: User) => {
@@ -189,17 +198,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      const myTenant: TenantContext = { id: myEntityId, name: myEntityName, type: myType, isMe: true };
+      const myTenant: TenantContext = withTenantDefaults({
+        id: myEntityId,
+        name: myEntityName,
+        type: myType,
+        isMe: true,
+      });
       setAvailableTenants([myTenant]);
       setCurrentTenant(myTenant);
     } catch (error) {
       if (!currentTenant) {
-        setCurrentTenant({
-          id: currentUser.id,
-          name: currentUser.name,
-          type: isVetTierUser(currentUser) && !isClinicTierUser(currentUser) ? 'vet' : 'clinic',
-          isMe: true,
-        });
+        setCurrentTenant(
+          withTenantDefaults({
+            id: currentUser.id,
+            name: currentUser.name,
+            type: isVetTierUser(currentUser) && !isClinicTierUser(currentUser) ? 'vet' : 'clinic',
+            isMe: true,
+          })
+        );
       }
     }
   };
@@ -245,6 +261,39 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsProfileReady(true);
     } finally {
       isHydratingRef.current = false;
+    }
+  };
+
+  const refreshProfile = async () => {
+    const uid = userIdRef.current;
+    if (!uid) return;
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id, name, email, role, level, owner_id, partners, permissions, signature_url, access_blocked')
+        .eq('id', uid)
+        .maybeSingle();
+      if (profile) {
+        const denied = await getProfileAccessDeniedMessage(profile);
+        if (denied) {
+          await supabase.auth.signOut();
+          setUser(null);
+          setCurrentTenant(null);
+          userIdRef.current = null;
+          setProfileError(denied);
+          return;
+        }
+        const dbUser: User = {
+          id: profile.id, email: profile.email, name: profile.name, username: profile.email, role: profile.role, level: profile.level, ownerId: profile.owner_id, partners: profile.partners || null,
+          permissions: mergePermissionsWithDefaults(profile.level, profile.permissions),
+          signatureUrl: profile.signature_url,
+          accessBlocked: !!profile.access_blocked
+        };
+        setUser(dbUser);
+        await loadLinkedTenants(dbUser);
+      }
+    } catch (err) {
+      console.error('Erro ao atualizar perfil:', err);
     }
   };
 
@@ -296,38 +345,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
            setIsLoading(false);
            hydrateUserProfile(session.user);
         }
+      } else if (event === 'TOKEN_REFRESHED' && session?.user?.id && session.user.id === userIdRef.current) {
+        await refreshProfile();
       }
     });
     return () => { subscription.unsubscribe(); };
   }, []);
-
-  const refreshProfile = async () => {
-    if (!user) return;
-    try {
-      const { data: profile } = await supabase.from('profiles').select('id, name, email, role, level, owner_id, partners, permissions, signature_url, access_blocked').eq('id', user.id).maybeSingle();
-      if (profile) {
-        const denied = await getProfileAccessDeniedMessage(profile);
-        if (denied) {
-          await supabase.auth.signOut();
-          setUser(null);
-          setCurrentTenant(null);
-          userIdRef.current = null;
-          setProfileError(denied);
-          return;
-        }
-        const dbUser: User = {
-          id: profile.id, email: profile.email, name: profile.name, username: profile.email, role: profile.role, level: profile.level, ownerId: profile.owner_id, partners: profile.partners || null,
-          permissions: mergePermissionsWithDefaults(profile.level, profile.permissions),
-          signatureUrl: profile.signature_url,
-          accessBlocked: !!profile.access_blocked
-        };
-        setUser(dbUser);
-        await loadLinkedTenants(dbUser);
-      }
-    } catch (err) {
-      console.error('Erro ao atualizar perfil:', err);
-    }
-  };
 
   const refreshUsers = async () => {
     if (user?.permissions.manage_users) {
@@ -535,8 +558,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const switchTenant = (tenantId: string) => {
-    const tenant = availableTenants.find(t => t.id === tenantId);
-    if (tenant) setCurrentTenant(tenant);
+    const tenant = availableTenants.find((t) => t.id === tenantId);
+    if (tenant) setCurrentTenant(withTenantDefaults(tenant));
   };
 
   return (
