@@ -894,42 +894,13 @@ export const OperationalDashboard = () => {
         pricesData.length > 0;
 
       if (isRootClinicForPrices) {
-        if (!clinicPartnerContextProfileId) {
-          /**
-           * Escopo da clínica (inclui regras com veterinarian_id = parceiro em Univet).
-           * Não remover regras de parceiro aqui: o dropdown "Exame" depende de priceRules + executor
-           * (clínica + vet) conforme clinicMatchesExamForm / availableExamsForSelectedClinic.
-           * Onde ocultar preços só do parceiro na UI: tabela de preços (visibleRules), não o estado global.
-           */
-          pricesData = pricesData.filter((p: { clinic_id?: string | null }) => {
-            const cid = (p.clinic_id ?? '').toString().trim();
-            return cid === myClinicForPriceScope || cid === '' || cid === 'default';
-          });
-        } else {
-          const pv = veterinarians.find((v) => v.profileId === clinicPartnerContextProfileId);
-          const pc = clinics.find((c) => c.profileId === clinicPartnerContextProfileId);
-          if (pv) {
-            /**
-             * Mesma lógica do select de exames (vetMatch): incluir regras do parceiro **e** regras
-             * sem vet específico / default nesta clínica. Só `vid === pv.id` esvaziava o dropdown
-             * quando os preços estão cadastrados como "genéricos" para a clínica.
-             */
-            pricesData = pricesData.filter((p: { clinic_id?: string | null; veterinarian_id?: string | null }) => {
-              const vid = (p.veterinarian_id ?? '').toString().trim();
-              const cid = (p.clinic_id ?? '').toString().trim();
-              const clinicOk =
-                cid === myClinicForPriceScope || cid === '' || cid === 'default';
-              if (!clinicOk) return false;
-              const genericVet = !vid || vid === 'default';
-              return genericVet || vid === pv.id;
-            });
-          } else if (pc) {
-            pricesData = pricesData.filter(
-              (p: { clinic_id?: string | null }) =>
-                (p.clinic_id ?? '').toString().trim() === pc.id
-            );
-          }
-        }
+        // O estado global de preços deve conter TODAS as regras da clínica, 
+        // independentemente do contexto de parceiro selecionado na aba de exames.
+        // A Tabela de Preços possui seus próprios filtros.
+        pricesData = pricesData.filter((p: { clinic_id?: string | null }) => {
+          const cid = (p.clinic_id ?? '').toString().trim();
+          return cid === myClinicForPriceScope || cid === '' || cid === 'default';
+        });
       }
 
       if (pricesData && pricesData.length > 0) {
@@ -1469,7 +1440,7 @@ export const OperationalDashboard = () => {
         
         return {
           date: formData.date,
-          pet_name: formData.petName,
+          petName: formData.petName,
           species: formData.species === 'Outros' ? formData.customSpecies : formData.species,
           requester_vet: formData.requesterVet,
           requester_crmv: formData.requesterCrmv,
@@ -3001,17 +2972,9 @@ export const OperationalDashboard = () => {
                           if ((rule.clinicId || '').trim() !== selectedClinicFilter.trim()) return false;
                         }
 
-                        /** "Minha clínica" (sem contexto parceiro): tabela não lista linhas só do vet parceiro; o formulário ainda usa essas regras no select de exames. */
-                        if (
-                          isClinicTierUser(user) &&
-                          (!user?.ownerId || user.ownerId === user.id) &&
-                          loggedUserEntity?.type === 'clinic' &&
-                          !clinicPartnerContextProfileId &&
-                          partnerLinkedVetEntityIds.size > 0
-                        ) {
-                          const rvid = (rule.veterinarianId || '').trim();
-                          if (rvid && partnerLinkedVetEntityIds.has(rvid)) return false;
-                        }
+                        // Removido o bloqueio que ocultava regras de parceiros na visão geral da clínica.
+                        // Agora a tabela de preços mostra todas as regras e o usuário pode usar o filtro
+                        // "Todas as clínicas e veterinários" para refinar a busca.
 
                         const isMainSubscriber = !user?.ownerId || user.ownerId === user.id;
                         
