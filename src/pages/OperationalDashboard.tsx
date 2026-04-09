@@ -229,7 +229,7 @@ export const OperationalDashboard = () => {
    * Assinante clínica (raiz): null = apenas dados da própria clínica; UUID = perfil do parceiro (partners) para ver subconjunto autorizado.
    */
   const [clinicPartnerContextProfileId, setClinicPartnerContextProfileId] = useState<string | null>(null);
-  const [partnerContextOptions, setPartnerContextOptions] = useState<{ profileId: string; name: string }[]>([]);
+  const [partnerContextOptions, setPartnerContextOptions] = useState<{ profileId: string; name: string; role?: string }[]>([]);
   const clinicContextHydratedRef = useRef(false);
 
   const [extraClinics, setExtraClinics] = useState<any[]>([]); 
@@ -302,23 +302,49 @@ export const OperationalDashboard = () => {
     return () => { isMounted = false; };
   }, [user]);
 
-  /** Nomes dos perfis em `user.partners` (seletor de contexto para assinante clínica). */
+  /** Nomes dos perfis em `user.partners` e membros internos (seletor de contexto para assinante clínica). */
   useEffect(() => {
-    if (!user?.id || !isClinicTierUser(user) || !user.partners?.length) {
+    if (!user?.id || !isClinicTierUser(user)) {
       setPartnerContextOptions([]);
       return;
     }
+    
     let cancelled = false;
-    const ids = user.partners.filter(Boolean) as string[];
+    
     (async () => {
-      const { data } = await supabase.from('profiles').select('id, name').in('id', ids);
-      if (cancelled || !data) return;
-      setPartnerContextOptions(data.map((p) => ({ profileId: p.id, name: (p.name || '').trim() || p.id })));
+      // 1. Parceiros Externos (via array partners)
+      const partnerIds = user.partners?.filter(Boolean) as string[] || [];
+      let externalPartners: { profileId: string; name: string; role?: string }[] = [];
+      
+      if (partnerIds.length > 0) {
+        const { data } = await supabase.from('profiles').select('id, name, role').in('id', partnerIds);
+        if (!cancelled && data) {
+          externalPartners = data.map(p => ({ profileId: p.id, name: (p.name || '').trim() || p.id, role: p.role }));
+        }
+      }
+      
+      if (cancelled) return;
+      
+      // 2. Membros Internos (Convidados) - já temos no state guestVets e guestClinics
+      const internalGuests = [
+        ...guestVets.map(v => ({ profileId: v.profileId, name: v.name, role: 'vet' })),
+        ...guestClinics.map(c => ({ profileId: c.profileId, name: c.name, role: 'clinic' }))
+      ];
+      
+      // Combina e remove duplicatas (caso existam)
+      const combined = [...externalPartners, ...internalGuests];
+      const unique = Array.from(new Map(combined.map(item => [item.profileId, item])).values());
+      
+      // Ordena alfabeticamente
+      unique.sort((a, b) => a.name.localeCompare(b.name));
+      
+      setPartnerContextOptions(unique);
     })();
+    
     return () => {
       cancelled = true;
     };
-  }, [user?.id, user?.role, user?.partners]);
+  }, [user?.id, user?.role, user?.partners, guestVets, guestClinics]);
 
   useEffect(() => {
     clinicContextHydratedRef.current = false;
@@ -344,9 +370,8 @@ export const OperationalDashboard = () => {
 
   useEffect(() => {
     if (!user?.id || !isClinicTierUser(user)) return;
-    if (clinicPartnerContextProfileId && user.partners?.length && !user.partners.includes(clinicPartnerContextProfileId)) {
-      setClinicPartnerContextProfileId(null);
-    }
+    // Removida a trava rígida que limpava o dropdown se o ID não estivesse em user.partners,
+    // pois agora o dropdown também aceita membros internos (guestVets/guestClinics).
   }, [user?.id, user?.role, user?.partners, clinicPartnerContextProfileId]);
   
   useEffect(() => {
@@ -467,7 +492,6 @@ export const OperationalDashboard = () => {
    */
   const showClinicPartnerContextDropdown = useMemo(() => {
     if (!isClinicTierUser(user)) return false;
-    if (!user?.partners?.length) return false;
     const cid =
       loggedUserEntity?.type === 'clinic'
         ? loggedUserEntity.id
@@ -750,9 +774,11 @@ export const OperationalDashboard = () => {
             query = query.eq('clinic_id', loggedUserEntity.id).eq('veterinarian_id', partnerVet.id);
           } else if (partnerClinic) {
             // FIX: Isola exames da clínica parceira para exibir apenas aqueles realizados pela equipe da clínica atual
-            const internalVetIds = veterinarians.filter((v) => v.profileId === user.ownerId).map((v) => v.id);
+            const myOwnVetIds = veterinarians.filter((v) => v.profileId === user.ownerId).map((v) => v.id);
+            const internalGuestVetIds = guestVets.map(v => v.id);
             const externalVetIds = Array.from(partnerLinkedVetEntityIds);
-            const allMyVetIds = [...internalVetIds, ...externalVetIds];
+            
+            const allMyVetIds = [...myOwnVetIds, ...internalGuestVetIds, ...externalVetIds];
             
             if (allMyVetIds.length > 0) {
               query = query.eq('clinic_id', partnerClinic.id).in('veterinarian_id', allMyVetIds);
@@ -788,9 +814,11 @@ export const OperationalDashboard = () => {
             query = query.eq('clinic_id', myClinicEntityId).eq('veterinarian_id', partnerVet.id);
           } else if (partnerClinic) {
             // FIX: Isola exames da clínica parceira para exibir apenas aqueles realizados pela equipe da clínica atual
-            const internalVetIds = veterinarians.filter((v) => v.profileId === user.id).map((v) => v.id);
+            const myOwnVetIds = veterinarians.filter((v) => v.profileId === user.id).map((v) => v.id);
+            const internalGuestVetIds = guestVets.map(v => v.id);
             const externalVetIds = Array.from(partnerLinkedVetEntityIds);
-            const allMyVetIds = [...internalVetIds, ...externalVetIds];
+            
+            const allMyVetIds = [...myOwnVetIds, ...internalGuestVetIds, ...externalVetIds];
             
             if (allMyVetIds.length > 0) {
               query = query.eq('clinic_id', partnerClinic.id).in('veterinarian_id', allMyVetIds);
@@ -2217,10 +2245,10 @@ export const OperationalDashboard = () => {
                       setClinicPartnerContextProfileId(e.target.value.trim() || null);
                     }}
                   >
-                    <option value="">Minha clínica</option>
+                    <option value="">Minha clínica (Geral)</option>
                     {partnerContextOptions.map((o) => (
                       <option key={o.profileId} value={o.profileId}>
-                        Parceiro: {o.name}
+                        {o.name}
                       </option>
                     ))}
                   </select>
