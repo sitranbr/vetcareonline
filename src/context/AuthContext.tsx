@@ -105,6 +105,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const userIdRef = useRef<string | null>(null);
   const isHydratingRef = useRef(false);
+  const isLoggingInRef = useRef(false); // Nova ref para controlar o fluxo de login
 
   const createUserFromSession = (sessionUser: any): User => {
     const metadata = sessionUser.user_metadata || {};
@@ -314,6 +315,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     };
     initializeAuth();
+    
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
         setUser(null);
@@ -322,7 +324,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setIsProfileReady(true);
         setIsLoading(false);
       } else if (event === 'SIGNED_IN' && session?.user) {
-        if (userIdRef.current !== session.user.id) {
+        // Ignora a hidratação via onAuthStateChange se o login manual estiver em andamento
+        if (userIdRef.current !== session.user.id && !isLoggingInRef.current) {
            userIdRef.current = session.user.id;
            setIsProfileReady(false);
            const tempUser = createUserFromSession(session.user);
@@ -449,14 +452,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => { if (user) refreshUsers(); }, [user]);
 
   const login = async (email: string, password: string) => {
+    isLoggingInRef.current = true; // Bloqueia interferência do onAuthStateChange
+    
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { error };
+    
+    if (error) {
+      isLoggingInRef.current = false;
+      return { error };
+    }
+    
     if (data.user) {
       const { data: profile } = await supabase
         .from('profiles')
         .select('id, access_blocked, owner_id')
         .eq('id', data.user.id)
         .maybeSingle();
+        
       if (profile) {
         const denied = await getProfileAccessDeniedMessage(profile);
         if (denied) {
@@ -464,18 +475,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setUser(null);
           setCurrentTenant(null);
           userIdRef.current = null;
+          isLoggingInRef.current = false;
           return { error: blockedAuthError(denied) };
         }
       }
+      
       userIdRef.current = data.user.id;
       setIsProfileReady(false);
+      
+      // Define o usuário temporário para garantir que a UI não quebre se a hidratação falhar
       const tempUser = createUserFromSession(data.user);
       setUser(tempUser);
       setProvisionalTenant(tempUser);
       setIsLoading(false);
       setProfileError(null);
-      hydrateUserProfile(data.user);
+      
+      // AGUARDA a hidratação completa das permissões antes de retornar e permitir a navegação
+      await hydrateUserProfile(data.user);
     }
+    
+    isLoggingInRef.current = false;
     return { error: null };
   };
 
