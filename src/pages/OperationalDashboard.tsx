@@ -1238,22 +1238,28 @@ export const OperationalDashboard = () => {
 
     const clinicVetRules = priceRules.filter(r => {
       const ruleVetId = (r.veterinarianId || '').trim();
-
       const clinicMatch = clinicMatchesExamForm(r.clinicId, cleanEffectiveId);
       const vetMatch = !ruleVetId || ruleVetId === 'default' || ruleVetId === safeVetId;
-
       return clinicMatch && vetMatch;
     });
 
-    /** Só lista modalidades com preço cadastrado para o período selecionado (ou período "all"). */
-    const periodPricedRules = clinicVetRules.filter(r => {
+    // NOVO: Isolar regras específicas do veterinário selecionado
+    // Se o parceiro tem regras negociadas específicas, mostramos apenas os exames dessas regras,
+    // ocultando os exames genéricos da clínica para evitar "duplicatas" ou exames não autorizados.
+    const specificVetRules = clinicVetRules.filter(r => {
+      const ruleVetId = (r.veterinarianId || '').trim();
+      return ruleVetId === safeVetId && safeVetId !== '';
+    });
+
+    const rulesToConsider = specificVetRules.length > 0 ? specificVetRules : clinicVetRules;
+
+    const periodPricedRules = rulesToConsider.filter(r => {
       const periodOk = r.period === 'all' || r.period === selectedPeriod;
       const priced = r.valor != null && Number(r.valor) > 0;
       return periodOk && priced;
     });
 
-    /** Se não há preço no período atual, mas há regras com valor para clínica+veterinário em outro período, lista essas modalidades (evita cair na lista genérica e ignora a tabela do parceiro). */
-    const pricedRulesAnyPeriod = clinicVetRules.filter(
+    const pricedRulesAnyPeriod = rulesToConsider.filter(
       (r) => r.valor != null && Number(r.valor) > 0
     );
     const rulesForExamDropdown =
@@ -1283,7 +1289,6 @@ export const OperationalDashboard = () => {
         { value: 'USG_FAST', label: 'USG Fast', isCustom: false },
         { value: 'RX_FAST', label: 'Raio-X FAST', isCustom: false }
       ];
-
       baseModalities.forEach(bm => {
         examsMap.set(bm.value, bm);
       });
@@ -1298,17 +1303,23 @@ export const OperationalDashboard = () => {
 
     const relevantRules = priceRules.filter(r => {
       const ruleVetId = (r.veterinarianId || '').trim();
-
       const clinicMatch = clinicMatchesExamForm(r.clinicId, cleanEffectiveId);
       const vetMatch = !ruleVetId || ruleVetId === 'default' || ruleVetId === safeVetId;
-
       return clinicMatch && vetMatch;
     });
+
+    // Mesma lógica de isolamento aplicada aos períodos
+    const specificVetRules = relevantRules.filter(r => {
+      const ruleVetId = (r.veterinarianId || '').trim();
+      return ruleVetId === safeVetId && safeVetId !== '';
+    });
+
+    const rulesToConsider = specificVetRules.length > 0 ? specificVetRules : relevantRules;
 
     const periods = new Set<string>();
     let hasAll = false;
 
-    relevantRules.forEach(r => {
+    rulesToConsider.forEach(r => {
       if (r.period === 'all') hasAll = true;
       else periods.add(r.period);
     });
@@ -1707,8 +1718,8 @@ export const OperationalDashboard = () => {
           newClinicId = 'default';
           newVetId = targetId;
         } else if (donorType === 'vet' && targetType === 'clinic') {
-          newVetId = null;
-          newClinicId = targetId;
+          newVetId = rule.veterinarian_id; // Mantém o vínculo com o veterinário parceiro
+          newClinicId = targetId; // Define a clínica atual como dona da regra
         }
 
         return {
@@ -3198,7 +3209,7 @@ export const OperationalDashboard = () => {
             </div>
           </div>
 
-          {!editingPrice && canCopyPriceTable && (loggedUserEntity?.type === 'vet' || currentTenant?.type === 'vet') && (availableClinicsForVet.length > 0 || copyAvailableVets.length > 0) && (
+          {!editingPrice && canCopyPriceTable && (availableClinicsForVet.length > 0 || copyAvailableVets.length > 0) && (
             <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
               <div className="flex items-start gap-3 mb-4">
                 <Copy className="w-5 h-5 text-teal-600 shrink-0 mt-0.5" />
