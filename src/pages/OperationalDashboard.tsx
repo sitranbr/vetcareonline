@@ -1454,7 +1454,7 @@ export const OperationalDashboard = () => {
           modality: item.modality,
           studies: item.studies,
           study_description: item.studyDescription,
-          rxStudies: item.rxStudies,
+          rx_studies: item.rxStudies,
           
           period: formData.period,
           machine_owner: formData.machineOwner,
