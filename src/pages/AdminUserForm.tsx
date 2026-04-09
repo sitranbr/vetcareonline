@@ -7,7 +7,7 @@ import {
   Users, Trash2, Search, AlertCircle,
   DollarSign, FileText, Settings, Tag, Stethoscope, Edit2,
   UserCheck, Link as LinkIcon, CheckCircle2, ArrowLeft, Loader2, Lock, XCircle, CheckCircle, Share2, UserPlus,
-  Eye, Pencil, FilePlus, Copy, Download, CheckSquare, ChevronDown, ChevronRight
+  Eye, Pencil, FilePlus, Copy, Download, ChevronDown, ChevronRight
 } from 'lucide-react';
 
 type MemberType = 'internal' | 'partner';
@@ -57,12 +57,9 @@ export const AdminUserForm = () => {
     visualizar_exames: false,
     editar_resultados: false,
     criar_exame: false,
-    duplicar_exame: false,
     gerar_pdf_exame: false,
-    aprovar_laudo: false,
     visualizar_valores: false,
     visualizar_totais: false,
-    visualizar_repasses: false,
     visualizar_relatorios_financeiros: false,
     visualizar_precos: false,
     criar_regra_preco: false,
@@ -109,12 +106,9 @@ export const AdminUserForm = () => {
         visualizar_exames: true,
         editar_resultados: true,
         criar_exame: true,
-        duplicar_exame: true,
         gerar_pdf_exame: true,
-        aprovar_laudo: true,
         visualizar_valores: true,
         visualizar_totais: true,
-        visualizar_repasses: true,
         visualizar_relatorios_financeiros: true,
         gerar_pdf_relatorio: true,
         exportar_dados_exames: true,
@@ -136,12 +130,9 @@ export const AdminUserForm = () => {
         visualizar_exames: true,
         editar_resultados: true,
         criar_exame: true,
-        duplicar_exame: true,
         gerar_pdf_exame: true,
-        aprovar_laudo: true,
         visualizar_valores: true,
         visualizar_totais: true,
-        visualizar_repasses: true,
         visualizar_relatorios_financeiros: true,
         visualizar_precos: true,
         criar_regra_preco: true,
@@ -173,12 +164,9 @@ export const AdminUserForm = () => {
         visualizar_exames: true,
         editar_resultados: true,
         criar_exame: true,
-        duplicar_exame: true,
         gerar_pdf_exame: true,
-        aprovar_laudo: true,
         visualizar_valores: true,
         visualizar_totais: true,
-        visualizar_repasses: true,
         visualizar_relatorios_financeiros: true,
         visualizar_precos: true,
         criar_regra_preco: true,
@@ -219,12 +207,9 @@ export const AdminUserForm = () => {
         visualizar_exames: true,
         editar_resultados: true,
         criar_exame: true,
-        duplicar_exame: true,
         gerar_pdf_exame: true,
-        aprovar_laudo: true,
         visualizar_valores: true,
         visualizar_totais: true,
-        visualizar_repasses: true,
         visualizar_relatorios_financeiros: true,
         gerar_pdf_relatorio: true,
         exportar_dados_exames: true,
@@ -243,11 +228,9 @@ export const AdminUserForm = () => {
         visualizar_exames: true,
         editar_resultados: true,
         criar_exame: true,
-        duplicar_exame: true,
         gerar_pdf_exame: true,
         visualizar_valores: true,
         visualizar_totais: true,
-        visualizar_repasses: true,
         visualizar_relatorios_financeiros: true,
         gerar_pdf_relatorio: true,
         exportar_dados_exames: true,
@@ -284,25 +267,24 @@ export const AdminUserForm = () => {
       description: 'Laudar exames, editar resultados, cadastrar múltiplos exames e criar exames customizados.',
       icon: Stethoscope,
       color: 'teal',
+      internalOnly: false,
       sublevels: [
         { key: 'visualizar_exames', label: 'Visualizar Exames', description: 'Permite visualizar exames e laudos existentes.', icon: Eye },
         { key: 'editar_resultados', label: 'Editar Resultados', description: 'Permite editar resultados e anexar imagens.', icon: Pencil },
         { key: 'criar_exame', label: 'Criar Exame', description: 'Autoriza o cadastro de novos exames personalizados.', icon: FilePlus },
-        { key: 'duplicar_exame', label: 'Duplicar Exame', description: 'Permite duplicar exames anteriores como modelo.', icon: Copy },
-        { key: 'gerar_pdf_exame', label: 'Gerar PDF do Exame', description: 'Permite gerar e baixar o PDF do exame/laudo.', icon: Download },
-        { key: 'aprovar_laudo', label: 'Aprovar Laudo', description: 'Permite marcar exames como "Laudado" ou "Aprovado".', icon: CheckSquare }
+        { key: 'gerar_pdf_exame', label: 'Gerar PDF do Exame', description: 'Permite gerar e baixar o PDF do exame/laudo.', icon: Download }
       ]
     },
     {
       key: 'view_financials',
       title: 'Financeiro',
-      description: 'Ver valores monetários, totais arrecadados, repasses profissionais e clínicas, e relatórios financeiros.',
+      description: 'Ver valores monetários, totais arrecadados e relatórios financeiros.',
       icon: DollarSign,
       color: 'indigo',
+      internalOnly: false,
       sublevels: [
         { key: 'visualizar_valores', label: 'Visualizar Valores', description: 'Ver valores de exames.', icon: Eye },
         { key: 'visualizar_totais', label: 'Visualizar Totais', description: 'Ver totais arrecadados.', icon: DollarSign },
-        { key: 'visualizar_repasses', label: 'Visualizar Repasses', description: 'Ver repasses profissionais e clínicas.', icon: DollarSign },
         { key: 'visualizar_relatorios_financeiros', label: 'Relatórios Financeiros', description: 'Ver relatórios financeiros.', icon: FileText }
       ]
     },
@@ -312,6 +294,7 @@ export const AdminUserForm = () => {
       description: 'Criar, editar e excluir regras de preço. Copiar tabelas entre clínicas parceiras e filtrar por clínica.',
       icon: Tag,
       color: 'indigo',
+      internalOnly: true, // Apenas membros internos ou o próprio assinante
       sublevels: [
         { key: 'visualizar_precos', label: 'Visualizar Preços', description: 'Visualizar tabela de preços.', icon: Eye },
         { key: 'criar_regra_preco', label: 'Criar Regra de Preço', description: 'Criar novas regras de preço.', icon: FilePlus },
@@ -327,6 +310,7 @@ export const AdminUserForm = () => {
       description: 'Gerar relatórios em PDF, exportar dados de exames e visualizar estatísticas financeiras.',
       icon: FileText,
       color: 'indigo',
+      internalOnly: false,
       sublevels: [
         { key: 'gerar_pdf_relatorio', label: 'Gerar PDF de Relatório', description: 'Gerar relatórios em PDF.', icon: Download },
         { key: 'exportar_dados_exames', label: 'Exportar Dados de Exames', description: 'Exportar dados de exames.', icon: Download },
@@ -339,9 +323,10 @@ export const AdminUserForm = () => {
       description: 'Remover exames do sistema. Ação permanente que requer confirmação.',
       icon: Trash2,
       color: 'red',
+      internalOnly: false,
       sublevels: [
         { key: 'excluir_exame_proprio', label: 'Excluir Exames Próprios', description: 'Excluir exames criados por você.', icon: Trash2 },
-        { key: 'excluir_exame_outros', label: 'Excluir Exames de Outros', description: 'Excluir exames criados por outros usuários.', icon: Trash2 }
+        { key: 'excluir_exame_outros', label: 'Excluir Exames de Outros', description: 'Excluir exames criados por outros usuários.', icon: Trash2, internalOnly: true }
       ]
     },
     {
@@ -350,6 +335,7 @@ export const AdminUserForm = () => {
       description: 'Criar membros internos, vincular/desvincular parceiros, gerenciar permissões e remover acessos.',
       icon: Users,
       color: 'indigo',
+      internalOnly: true, // Apenas membros internos ou o próprio assinante
       sublevels: [
         { key: 'visualizar_equipe', label: 'Visualizar Equipe', description: 'Visualizar lista de membros.', icon: Eye },
         { key: 'criar_membro_interno', label: 'Criar Membro Interno', description: 'Criar membros internos.', icon: UserPlus },
@@ -365,6 +351,7 @@ export const AdminUserForm = () => {
       description: 'Editar informações da clínica/veterinário, logo, contatos e configurações gerais do sistema.',
       icon: Settings,
       color: 'indigo',
+      internalOnly: true, // Apenas membros internos ou o próprio assinante
       sublevels: [
         { key: 'editar_informacoes', label: 'Editar Informações', description: 'Editar informações da clínica/veterinário.', icon: Pencil },
         { key: 'editar_logo', label: 'Editar Logo', description: 'Editar logo.', icon: Pencil },
@@ -604,10 +591,38 @@ export const AdminUserForm = () => {
     setFormSuccess(null);
 
     try {
+      // Trava de Segurança: Garante que parceiros externos nunca recebam permissões administrativas ou de exclusão de terceiros
+      const finalPermissions = { ...permissions };
+      if (memberType === 'partner') {
+        finalPermissions.manage_prices = false;
+        finalPermissions.visualizar_precos = false;
+        finalPermissions.criar_regra_preco = false;
+        finalPermissions.editar_regra_preco = false;
+        finalPermissions.excluir_regra_preco = false;
+        finalPermissions.copiar_tabela_precos = false;
+        finalPermissions.filtrar_por_clinica = false;
+
+        finalPermissions.manage_users = false;
+        finalPermissions.visualizar_equipe = false;
+        finalPermissions.criar_membro_interno = false;
+        finalPermissions.editar_membro = false;
+        finalPermissions.remover_acesso = false;
+        finalPermissions.vincular_parceiro = false;
+        finalPermissions.desvincular_parceiro = false;
+
+        finalPermissions.manage_settings = false;
+        finalPermissions.editar_informacoes = false;
+        finalPermissions.editar_logo = false;
+        finalPermissions.editar_contatos = false;
+        finalPermissions.configuracao_geral = false;
+        
+        finalPermissions.excluir_exame_outros = false;
+      }
+
       if (editingUser) {
         const updateData: Partial<User> = {
           name: formData.name,
-          permissions: permissions
+          permissions: finalPermissions
         };
         if (memberType === 'partner') {
           updateData.role = partnerRole;
@@ -641,7 +656,7 @@ export const AdminUserForm = () => {
                 password: formData.password,
                 level: partnerRole === 'vet' ? 3 : 4,
                 role: partnerRole,
-                permissions: permissions
+                permissions: finalPermissions
               });
               setFormSuccess("Novo parceiro convidado criado com sucesso!");
           } else {
@@ -658,7 +673,7 @@ export const AdminUserForm = () => {
             level: 5,
             role: 'reception',
             ownerId: currentUser.ownerId || currentUser.id,
-            permissions: permissions
+            permissions: finalPermissions
           });
           setFormSuccess("Membro da equipe criado com sucesso!");
         }
@@ -936,8 +951,12 @@ export const AdminUserForm = () => {
               <label className="block text-xs font-semibold text-gray-600 mb-2 mt-4">Permissões Detalhadas:</label>
               <div className="space-y-3 max-h-[min(70vh,560px)] overflow-y-auto pr-1">
                 {permissionHierarchy.map((mainLevel) => {
+                  // Trava de UX: Oculta permissões administrativas se for parceiro externo
+                  if (mainLevel.internalOnly && memberType === 'partner') return null;
+                  
                   if (!canGrant(mainLevel.key as keyof UserPermissions)) return null;
 
+                  const visibleSublevels = mainLevel.sublevels.filter(sub => !(sub.internalOnly && memberType === 'partner'));
                   const isExpanded = expandedSections.has(mainLevel.key);
                   const isMainChecked = permissions[mainLevel.key as keyof UserPermissions] || false;
 
@@ -976,13 +995,13 @@ export const AdminUserForm = () => {
                               <div className="flex items-center gap-2 flex-1">
                                 <mainLevel.icon className={`w-5 h-5 ${getIconClasses()}`} />
                                 <h3 className="font-semibold text-gray-900">{mainLevel.title}</h3>
-                                {mainLevel.sublevels.length > 0 && (
+                                {visibleSublevels.length > 0 && (
                                   <span className="text-xs text-gray-400 font-normal">
-                                    ({mainLevel.sublevels.length} subníveis)
+                                    ({visibleSublevels.length} subníveis)
                                   </span>
                                 )}
                               </div>
-                              {mainLevel.sublevels.length > 0 && (
+                              {visibleSublevels.length > 0 && (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -1007,13 +1026,13 @@ export const AdminUserForm = () => {
                         </div>
                       </div>
 
-                      {isExpanded && mainLevel.sublevels.length > 0 && (
+                      {isExpanded && visibleSublevels.length > 0 && (
                         <div className="border-t border-gray-200 bg-gray-50/50 px-4 pb-3 pt-2 space-y-2 animate-fade-in">
                           <div className="text-xs font-semibold text-gray-600 mb-2 px-1 flex items-center gap-1">
                             <ChevronDown className="w-3 h-3" />
                             Subníveis de Acesso:
                           </div>
-                          {mainLevel.sublevels.map((sublevel) => {
+                          {visibleSublevels.map((sublevel) => {
                             const isSubChecked = permissions[sublevel.key as keyof UserPermissions] || false;
                             return (
                               <label

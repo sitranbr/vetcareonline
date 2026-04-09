@@ -1031,11 +1031,10 @@ export const OperationalDashboard = () => {
     const canExportFinancialReportPdf =
       level1 || (hasExportSubPermissions ? !!p?.gerar_pdf_relatorio : !!p?.export_reports);
 
-    /** Veterinário assinante independente precisa da aba de preços para cumprir a regra do 1º exame. */
+    /** Veterinário assinante independente precisa da aba de preços para cumprir a regra do 1º exame. Membros internos acessam se tiverem permissão delegada. */
     const canAccessPriceTab =
       level1 ||
       (!isPartnerView &&
-        !isGuestPartner &&
         (isIndependentVetSubscriber ||
           (hasPriceSubPermissions ? !!(p?.manage_prices || p?.visualizar_precos) : !!p?.manage_prices)));
 
@@ -1045,25 +1044,21 @@ export const OperationalDashboard = () => {
 
     const canCreatePriceRule =
       !isPartnerView &&
-      !isGuestPartner &&
       (level1 ||
         isIndependentVetSubscriber ||
         priceRuleAllowed(p?.criar_regra_preco));
     const canEditPriceRule =
       !isPartnerView &&
-      !isGuestPartner &&
       (level1 ||
         isIndependentVetSubscriber ||
         priceRuleAllowed(p?.editar_regra_preco));
     const canDeletePriceRule =
       !isPartnerView &&
-      !isGuestPartner &&
       (level1 ||
         isIndependentVetSubscriber ||
         priceRuleAllowed(p?.excluir_regra_preco));
     const canCopyPriceTable =
       !isPartnerView &&
-      !isGuestPartner &&
       (level1 ||
         isIndependentVetSubscriber ||
         priceRuleAllowed(p?.copiar_tabela_precos));
@@ -1451,7 +1446,7 @@ export const OperationalDashboard = () => {
         
         return {
           date: formData.date,
-          petName: formData.petName,
+          pet_name: formData.petName,
           species: formData.species === 'Outros' ? formData.customSpecies : formData.species,
           requester_vet: formData.requesterVet,
           requester_crmv: formData.requesterCrmv,
@@ -1459,7 +1454,7 @@ export const OperationalDashboard = () => {
           modality: item.modality,
           studies: item.studies,
           study_description: item.studyDescription,
-          rx_studies: item.rxStudies,
+          rxStudies: item.rxStudies,
           
           period: formData.period,
           machine_owner: formData.machineOwner,

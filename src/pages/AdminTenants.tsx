@@ -5,10 +5,26 @@ import { User } from '../types';
 import { Modal } from '../components/Modal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { supabase } from '../lib/supabase';
+import { formatMoney } from '../utils/calculations';
 import {
   Building2, Stethoscope, Plus, Trash2, Search, Shield, Edit2, Link as LinkIcon, UserCheck,
-  Eraser, AlertTriangle, Loader2, CheckCircle, XCircle
+  Eraser, AlertTriangle, Loader2, CheckCircle, XCircle, ChevronDown, ChevronRight, Users
 } from 'lucide-react';
+
+interface PartnerService {
+  id: string;
+  modality: string;
+  label: string;
+  price: number;
+  period: string;
+}
+
+interface PartnerDetail {
+  id: string;
+  name: string;
+  role: string;
+  services: PartnerService[];
+}
 
 export const AdminTenants = () => {
   const { users, user: currentUser, deleteUser, refreshUsers } = useAuth();
@@ -18,6 +34,11 @@ export const AdminTenants = () => {
   const [isCleanupModalOpen, setIsCleanupModalOpen] = useState(false);
   const [cleanupEmail, setCleanupEmail] = useState('');
   const [cleanupStatus, setCleanupStatus] = useState<{ type: 'success' | 'error' | 'loading'; msg: string } | null>(null);
+
+  // Estados para o Tree View (Lazy Loading)
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [loadingDetails, setLoadingDetails] = useState<Set<string>>(new Set());
+  const [partnerDetailsCache, setPartnerDetailsCache] = useState<Record<string, PartnerDetail[]>>({});
 
   const isRootSubscriberAccount = (u: User) => {
     if (u.level === 1) return true;
@@ -88,6 +109,93 @@ export const AdminTenants = () => {
 
     if (labels.length === 0) return null;
     return { type: type || 'partner', labels };
+  };
+
+  const loadTenantDetails = async (tenantId: string): Promise<PartnerDetail[]> => {
+    // 1. Busca parceiros e convidados
+    const { data: tenantProfile } = await supabase.from('profiles').select('partners').eq('id', tenantId).single();
+    const partnerIds = tenantProfile?.partners || [];
+    
+    const { data: guests } = await supabase.from('profiles').select('id').eq('owner_id', tenantId);
+    const guestIds = guests?.map(g => g.id) || [];
+    
+    const allLinkedIds = Array.from(new Set([...partnerIds, ...guestIds])).filter(id => id !== tenantId);
+    
+    if (allLinkedIds.length === 0) return [];
+
+    // 2. Busca perfis e entidades
+    const { data: linkedProfiles } = await supabase.from('profiles').select('id, name, role').in('id', allLinkedIds);
+    const { data: linkedVets } = await supabase.from('veterinarians').select('id, profile_id').in('profile_id', allLinkedIds);
+    const { data: linkedClinics } = await supabase.from('clinics').select('id, profile_id').in('profile_id', allLinkedIds);
+    
+    // 3. Busca regras de preço do assinante
+    const { data: rules } = await supabase.from('price_rules').select('*').eq('owner_id', tenantId);
+
+    const details: PartnerDetail[] = [];
+    
+    for (const p of (linkedProfiles || [])) {
+      let entityId = null;
+      if (p.role === 'vet') {
+        entityId = linkedVets?.find(v => v.profile_id === p.id)?.id;
+      } else if (p.role === 'clinic') {
+        entityId = linkedClinics?.find(c => c.profile_id === p.id)?.id;
+      }
+      
+      const partnerRules = (rules || []).filter(r => {
+        if (!entityId) return false;
+        return r.veterinarian_id === entityId || r.clinic_id === entityId;
+      });
+
+      partnerRules.sort((a, b) => {
+        const modA = a.label || a.modality || '';
+        const modB = b.label || b.modality || '';
+        return modA.localeCompare(modB);
+      });
+
+      details.push({
+        id: p.id,
+        name: p.name,
+        role: p.role,
+        services: partnerRules.map(r => ({
+          id: r.id,
+          modality: r.modality,
+          label: r.label || r.modality,
+          price: Number(r.valor) + Number(r.taxa_extra || 0),
+          period: r.period_label || r.period
+        }))
+      });
+    }
+    
+    details.sort((a, b) => a.name.localeCompare(b.name));
+    return details;
+  };
+
+  const toggleRow = async (tenantId: string) => {
+    const newExpanded = new Set(expandedRows);
+    if (newExpanded.has(tenantId)) {
+      newExpanded.delete(tenantId);
+      setExpandedRows(newExpanded);
+      return;
+    }
+    
+    newExpanded.add(tenantId);
+    setExpandedRows(newExpanded);
+    
+    if (!partnerDetailsCache[tenantId]) {
+      setLoadingDetails(prev => new Set(prev).add(tenantId));
+      try {
+        const details = await loadTenantDetails(tenantId);
+        setPartnerDetailsCache(prev => ({ ...prev, [tenantId]: details }));
+      } catch (err) {
+        console.error("Erro ao carregar detalhes do parceiro:", err);
+      } finally {
+        setLoadingDetails(prev => {
+          const next = new Set(prev);
+          next.delete(tenantId);
+          return next;
+        });
+      }
+    }
   };
 
   const handleConfirmDelete = async () => {
@@ -195,91 +303,159 @@ export const AdminTenants = () => {
           <tbody className="bg-white divide-y divide-gray-200">
             {tenantUsers.map((user) => {
               const partnershipInfo = getPartnershipInfo(user);
+              const isExpanded = expandedRows.has(user.id);
 
               return (
-                <tr key={user.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div
-                        className={`h-10 w-10 rounded-full flex items-center justify-center text-white font-bold ${user.level === 1 ? 'bg-purple-500' : user.level === 3 ? 'bg-teal-500' : 'bg-blue-500'}`}
-                      >
-                        {user.name.charAt(0).toUpperCase()}
+                <React.Fragment key={user.id}>
+                  <tr className={`hover:bg-gray-50 transition-colors ${isExpanded ? 'bg-gray-50/50' : ''}`}>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-3">
+                        <button 
+                          onClick={() => toggleRow(user.id)}
+                          className="p-1 hover:bg-gray-200 rounded-md transition-colors text-gray-500 shrink-0"
+                          title={isExpanded ? "Ocultar parceiros" : "Ver parceiros e tabelas de preços"}
+                        >
+                          {isExpanded ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                        </button>
+                        <div className="flex items-center">
+                          <div
+                            className={`h-10 w-10 rounded-full flex items-center justify-center text-white font-bold ${user.level === 1 ? 'bg-purple-500' : user.level === 3 ? 'bg-teal-500' : 'bg-blue-500'}`}
+                          >
+                            {user.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-gray-900 flex flex-wrap items-center gap-2">
+                              {user.name}
+                              {user.accessBlocked && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-semibold border border-amber-200">
+                                  Acesso suspenso
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-500">ID: {user.id.slice(0, 8)}...</div>
+
+                            {partnershipInfo && partnershipInfo.labels.length > 0 && (
+                              <div className="mt-1 flex flex-col gap-0.5">
+                                {partnershipInfo.labels.map((label, idx) => (
+                                  <div
+                                    key={idx}
+                                    className={`text-[10px] font-medium flex items-center gap-1 ${partnershipInfo.type === 'direct' ? 'text-purple-600' : 'text-amber-600'}`}
+                                  >
+                                    {partnershipInfo.type === 'partner' ? (
+                                      <LinkIcon className="w-3 h-3 shrink-0" />
+                                    ) : (
+                                      <UserCheck className="w-3 h-3 shrink-0" />
+                                    )}
+                                    {label}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900 flex flex-wrap items-center gap-2">
-                          {user.name}
-                          {user.accessBlocked && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 font-semibold border border-amber-200">
-                              Acesso suspenso
-                            </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {user.level === 1 && (
+                        <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-800 font-bold">Super Admin</span>
+                      )}
+                      {user.level === 3 && (
+                        <span className="px-2 py-1 text-xs rounded-full bg-teal-100 text-teal-800 font-bold flex items-center w-fit gap-1">
+                          <Stethoscope className="w-3 h-3" /> Veterinário
+                        </span>
+                      )}
+                      {user.level === 4 && (
+                        <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 font-bold flex items-center w-fit gap-1">
+                          <Building2 className="w-3 h-3" /> Clínica
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{user.email}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      {(user.level !== 1 || user.id === currentUser?.id) && (
+                        <div className="flex justify-end gap-2 items-center flex-wrap">
+                          <Link
+                            to={`/tenants/${user.id}/edit`}
+                            className="text-blue-600 hover:text-blue-800 p-2 hover:bg-blue-50 rounded-lg transition-colors inline-flex"
+                            title={
+                              partnershipInfo?.labels?.length
+                                ? 'Editar assinante (vínculos de parceria permanecem na coluna Assinante)'
+                                : 'Editar assinante'
+                            }
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </Link>
+                          {user.level !== 1 && (
+                            <button
+                              type="button"
+                              onClick={() => setDeleteConfirm(user.id)}
+                              className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Excluir conta completamente"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           )}
                         </div>
-                        <div className="text-xs text-gray-500">ID: {user.id.slice(0, 8)}...</div>
-
-                        {partnershipInfo && partnershipInfo.labels.length > 0 && (
-                          <div className="mt-1 flex flex-col gap-0.5">
-                            {partnershipInfo.labels.map((label, idx) => (
-                              <div
-                                key={idx}
-                                className={`text-[10px] font-medium flex items-center gap-1 ${partnershipInfo.type === 'direct' ? 'text-purple-600' : 'text-amber-600'}`}
-                              >
-                                {partnershipInfo.type === 'partner' ? (
-                                  <LinkIcon className="w-3 h-3 shrink-0" />
-                                ) : (
-                                  <UserCheck className="w-3 h-3 shrink-0" />
-                                )}
-                                {label}
+                      )}
+                    </td>
+                  </tr>
+                  
+                  {/* Linha Expandida (Tree View) */}
+                  {isExpanded && (
+                    <tr className="bg-gray-50/30 border-b border-gray-100">
+                      <td colSpan={4} className="px-6 py-4 pl-[4.5rem]">
+                        {loadingDetails.has(user.id) ? (
+                          <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
+                            <Loader2 className="w-4 h-4 animate-spin text-petcare-DEFAULT" />
+                            Carregando detalhes dos parceiros...
+                          </div>
+                        ) : (
+                          <div className="animate-fade-in">
+                            {(!partnerDetailsCache[user.id] || partnerDetailsCache[user.id].length === 0) ? (
+                              <p className="text-sm text-gray-500 italic py-2">Nenhum parceiro vinculado a este assinante.</p>
+                            ) : (
+                              <div className="space-y-4">
+                                <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                                  <Users className="w-4 h-4" />
+                                  Parceiros Vinculados ({partnerDetailsCache[user.id].length})
+                                </h4>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                  {partnerDetailsCache[user.id].map(partner => (
+                                    <div key={partner.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                                      <div className="flex items-center gap-2 font-bold text-gray-800 mb-3 pb-2 border-b border-gray-100">
+                                        {partner.role === 'vet' ? <Stethoscope className="w-4 h-4 text-teal-600"/> : <Building2 className="w-4 h-4 text-blue-600"/>}
+                                        {partner.name}
+                                        <span className="text-[10px] font-medium px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full ml-auto">
+                                          {partner.role === 'vet' ? 'Veterinário' : 'Clínica'}
+                                        </span>
+                                      </div>
+                                      
+                                      {partner.services.length > 0 ? (
+                                        <div className="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                                          {partner.services.map(s => (
+                                            <div key={s.id} className="flex justify-between items-center text-xs p-2 hover:bg-gray-50 rounded-lg border border-transparent hover:border-gray-100 transition-colors">
+                                              <div className="flex flex-col">
+                                                <span className="font-semibold text-gray-700">{s.label}</span>
+                                                <span className="text-[10px] text-gray-500">{s.period}</span>
+                                              </div>
+                                              <span className="font-bold text-petcare-dark">{formatMoney(s.price)}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <p className="text-xs text-gray-400 italic py-2 text-center bg-gray-50 rounded-lg">Nenhum serviço ou preço específico configurado.</p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
-                            ))}
+                            )}
                           </div>
                         )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {user.level === 1 && (
-                      <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-800 font-bold">Super Admin</span>
-                    )}
-                    {user.level === 3 && (
-                      <span className="px-2 py-1 text-xs rounded-full bg-teal-100 text-teal-800 font-bold flex items-center w-fit gap-1">
-                        <Stethoscope className="w-3 h-3" /> Veterinário
-                      </span>
-                    )}
-                    {user.level === 4 && (
-                      <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 font-bold flex items-center w-fit gap-1">
-                        <Building2 className="w-3 h-3" /> Clínica
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{user.email}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    {(user.level !== 1 || user.id === currentUser?.id) && (
-                      <div className="flex justify-end gap-2 items-center flex-wrap">
-                        <Link
-                          to={`/tenants/${user.id}/edit`}
-                          className="text-blue-600 hover:text-blue-800 p-2 hover:bg-blue-50 rounded-lg transition-colors inline-flex"
-                          title={
-                            partnershipInfo?.labels?.length
-                              ? 'Editar assinante (vínculos de parceria permanecem na coluna Assinante)'
-                              : 'Editar assinante'
-                          }
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </Link>
-                        {user.level !== 1 && (
-                          <button
-                            type="button"
-                            onClick={() => setDeleteConfirm(user.id)}
-                            className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Excluir conta completamente"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                </tr>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               );
             })}
           </tbody>

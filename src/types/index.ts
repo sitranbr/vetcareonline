@@ -8,16 +8,13 @@ export interface UserPermissions {
   visualizar_exames?: boolean;    // Visualizar exames e laudos existentes
   editar_resultados?: boolean;    // Editar resultados e anexar imagens
   criar_exame?: boolean;          // Cadastrar novos exames personalizados
-  duplicar_exame?: boolean;       // Duplicar/excluir exames anteriores como modelo
   gerar_pdf_exame?: boolean;      // Gerar e baixar o PDF do exame/laudo
-  aprovar_laudo?: boolean;         // Marcar exames como "Laudado" ou "Aprovado"
   
   // Financeiro
   view_financials: boolean;      // Nível principal: Ver valores monetários
   // Subníveis de view_financials
   visualizar_valores?: boolean;   // Ver valores de exames
   visualizar_totais?: boolean;    // Ver totais arrecadados
-  visualizar_repasses?: boolean;  // Ver repasses profissionais e clínicas
   visualizar_relatorios_financeiros?: boolean; // Ver relatórios financeiros
   
   // Tabela de Preços

@@ -200,7 +200,7 @@ export const AdminUsers = () => {
           }
         }} 
         title="Remover Acesso" 
-        message="Tem certeza? O usuário perderá o acesso ao sistema da sua clínica." 
+        message="Tem certeza? O usuário perderá o acesso ao sistema. O histórico de exames já registrados NÃO será apagado." 
         variant="danger" 
       />
       
@@ -227,7 +227,7 @@ export const AdminUsers = () => {
           }
         }} 
         title="Desvincular Parceiro" 
-        message={`Tem certeza que deseja desvincular "${unlinkConfirm?.name}"? A conexão será removida, mas a conta do parceiro permanecerá ativa.`} 
+        message={`Tem certeza que deseja desvincular "${unlinkConfirm?.name}"? A conexão será removida, mas o histórico de exames permanecerá intacto.`} 
         variant="warning" 
       />
     </div>
