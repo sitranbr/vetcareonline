@@ -749,7 +749,16 @@ export const OperationalDashboard = () => {
           if (partnerVet) {
             query = query.eq('clinic_id', loggedUserEntity.id).eq('veterinarian_id', partnerVet.id);
           } else if (partnerClinic) {
-            query = query.eq('clinic_id', partnerClinic.id);
+            // FIX: Isola exames da clínica parceira para exibir apenas aqueles realizados pela equipe da clínica atual
+            const internalVetIds = veterinarians.filter((v) => v.profileId === user.ownerId).map((v) => v.id);
+            const externalVetIds = Array.from(partnerLinkedVetEntityIds);
+            const allMyVetIds = [...internalVetIds, ...externalVetIds];
+            
+            if (allMyVetIds.length > 0) {
+              query = query.eq('clinic_id', partnerClinic.id).in('veterinarian_id', allMyVetIds);
+            } else {
+              query = query.eq('id', '00000000-0000-0000-0000-000000000000');
+            }
           } else {
             query = query.eq('clinic_id', loggedUserEntity.id);
           }
@@ -778,7 +787,16 @@ export const OperationalDashboard = () => {
           if (partnerVet) {
             query = query.eq('clinic_id', myClinicEntityId).eq('veterinarian_id', partnerVet.id);
           } else if (partnerClinic) {
-            query = query.eq('clinic_id', partnerClinic.id);
+            // FIX: Isola exames da clínica parceira para exibir apenas aqueles realizados pela equipe da clínica atual
+            const internalVetIds = veterinarians.filter((v) => v.profileId === user.id).map((v) => v.id);
+            const externalVetIds = Array.from(partnerLinkedVetEntityIds);
+            const allMyVetIds = [...internalVetIds, ...externalVetIds];
+            
+            if (allMyVetIds.length > 0) {
+              query = query.eq('clinic_id', partnerClinic.id).in('veterinarian_id', allMyVetIds);
+            } else {
+              query = query.eq('id', '00000000-0000-0000-0000-000000000000');
+            }
           } else {
             query = query.eq('clinic_id', myClinicEntityId);
           }
