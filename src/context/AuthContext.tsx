@@ -105,7 +105,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const userIdRef = useRef<string | null>(null);
   const isHydratingRef = useRef(false);
-  const isLoggingInRef = useRef(false); // Nova ref para controlar o fluxo de login
+  const isLoggingInRef = useRef(false);
 
   const createUserFromSession = (sessionUser: any): User => {
     const metadata = sessionUser.user_metadata || {};
@@ -289,9 +289,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       try {
         const { data, error } = await supabase.auth.getSession();
         if (error) {
-          if (error.message?.includes('Refresh Token') || error.code === 'refresh_token_not_found') {
-            // Limpa explicitamente a sessão inválida do local storage
+          // Captura o erro de refresh token inválido e limpa o cache corrompido
+          if (error.message?.includes('Refresh Token') || error.code === 'refresh_token_not_found' || error.status === 400) {
             await supabase.auth.signOut().catch(() => {});
+            // Limpeza forçada do localStorage para chaves do Supabase
+            Object.keys(localStorage).forEach(key => {
+              if (key.startsWith('sb-')) {
+                localStorage.removeItem(key);
+              }
+            });
             setUser(null);
             setCurrentTenant(null);
           }
@@ -326,7 +332,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setIsProfileReady(true);
         setIsLoading(false);
       } else if (event === 'SIGNED_IN' && session?.user) {
-        // Ignora a hidratação via onAuthStateChange se o login manual estiver em andamento
         if (userIdRef.current !== session.user.id && !isLoggingInRef.current) {
            userIdRef.current = session.user.id;
            setIsProfileReady(false);
@@ -454,7 +459,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => { if (user) refreshUsers(); }, [user]);
 
   const login = async (email: string, password: string) => {
-    isLoggingInRef.current = true; // Bloqueia interferência do onAuthStateChange
+    isLoggingInRef.current = true;
     
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     
@@ -485,14 +490,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       userIdRef.current = data.user.id;
       setIsProfileReady(false);
       
-      // Define o usuário temporário para garantir que a UI não quebre se a hidratação falhar
       const tempUser = createUserFromSession(data.user);
       setUser(tempUser);
       setProvisionalTenant(tempUser);
       setIsLoading(false);
       setProfileError(null);
       
-      // AGUARDA a hidratação completa das permissões antes de retornar e permitir a navegação
       await hydrateUserProfile(data.user);
     }
     
