@@ -768,8 +768,8 @@ export const OperationalDashboard = () => {
         if (!clinicPartnerContextProfileId) {
           query = query.eq('clinic_id', loggedUserEntity.id);
         } else {
-          const partnerVet = veterinarians.find((v) => v.profileId === clinicPartnerContextProfileId);
-          const partnerClinic = clinics.find((c) => c.profileId === clinicPartnerContextProfileId);
+          const partnerVet = veterinarians.find((v) => v.profileId === clinicPartnerContextProfileId) || guestVets.find(v => v.profileId === clinicPartnerContextProfileId);
+          const partnerClinic = clinics.find((c) => c.profileId === clinicPartnerContextProfileId) || guestClinics.find(c => c.profileId === clinicPartnerContextProfileId);
           if (partnerVet) {
             query = query.eq('clinic_id', loggedUserEntity.id).eq('veterinarian_id', partnerVet.id);
           } else if (partnerClinic) {
@@ -808,9 +808,11 @@ export const OperationalDashboard = () => {
         if (!clinicPartnerContextProfileId) {
           query = query.eq('clinic_id', myClinicEntityId);
         } else {
-          const partnerVet = veterinarians.find((v) => v.profileId === clinicPartnerContextProfileId);
-          const partnerClinic = clinics.find((c) => c.profileId === clinicPartnerContextProfileId);
+          const partnerVet = veterinarians.find((v) => v.profileId === clinicPartnerContextProfileId) || guestVets.find(v => v.profileId === clinicPartnerContextProfileId);
+          const partnerClinic = clinics.find((c) => c.profileId === clinicPartnerContextProfileId) || guestClinics.find(c => c.profileId === clinicPartnerContextProfileId);
+          
           if (partnerVet) {
+            // FIX REVERTED: Volta à lógica original de isolamento estrito para a clínica atual
             query = query.eq('clinic_id', myClinicEntityId).eq('veterinarian_id', partnerVet.id);
           } else if (partnerClinic) {
             // FIX: Isola exames da clínica parceira para exibir apenas aqueles realizados pela equipe da clínica atual

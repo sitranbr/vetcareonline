@@ -289,7 +289,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       try {
         const { data, error } = await supabase.auth.getSession();
         if (error) {
-          if (error.message.includes('Refresh Token') || error.code === 'refresh_token_not_found') {
+          if (error.message?.includes('Refresh Token') || error.code === 'refresh_token_not_found') {
+            // Limpa explicitamente a sessão inválida do local storage
+            await supabase.auth.signOut().catch(() => {});
             setUser(null);
             setCurrentTenant(null);
           }
