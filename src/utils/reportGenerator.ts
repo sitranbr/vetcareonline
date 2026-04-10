@@ -244,7 +244,8 @@ export const generatePDFReport = async (
   const totalExams = reportExams.length;
   const totalValue = reportExams.reduce((acc, curr) => acc + curr.totalValue, 0);
   const totalRepasseAndre = reportExams.reduce((acc, curr) => acc + curr.repasseProfessional, 0);
-  const totalRepasseUnivet = reportExams.reduce((acc, curr) => acc + curr.repasseClinic, 0);
+  // O Líquido da Clínica é sempre a diferença entre o Total e o Líquido do Profissional
+  const totalRepasseUnivet = totalValue - totalRepasseAndre;
   const totalISS = totalValue * 0.05;
 
   const startY = 60;
@@ -279,14 +280,14 @@ export const generatePDFReport = async (
     
     const row2Y = startY + 25;
     doc.setFont(pdfFont, 'normal');
-    doc.text('R. Profissional:', 18, row2Y);
+    doc.text('Líq. Profissional:', 18, row2Y);
     doc.setFont(pdfFont, 'bold');
     doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
     doc.text(formatMoney(totalRepasseAndre), 44, row2Y);
     
     doc.setFont(pdfFont, 'normal');
     doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
-    doc.text('R. Clínica:', 75, row2Y);
+    doc.text('Líq. Clínica:', 75, row2Y);
     doc.setFont(pdfFont, 'bold');
     doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
     doc.text(formatMoney(totalRepasseUnivet), 95, row2Y);
@@ -327,7 +328,7 @@ export const generatePDFReport = async (
 
   /** Rótulos curtos para caber melhor no cabeçalho com fonte reduzida. */
   const tableHeaders = ['Data', 'PET', 'Solicit.', 'Modalidade', 'Período', 'Máquina', 'Valor'];
-  if (canViewFinancials) tableHeaders.push('R. Prof.', 'R. Clín.');
+  if (canViewFinancials) tableHeaders.push('Líq. Prof.', 'Líq. Clín.');
 
   groups.forEach(group => {
     if (group.title) {
@@ -359,14 +360,14 @@ export const generatePDFReport = async (
 
       if (canViewFinancials) {
         row.push(formatMoney(exam.repasseProfessional));
-        row.push(formatMoney(exam.repasseClinic));
+        row.push(formatMoney(exam.totalValue - exam.repasseProfessional)); // Líquido Clínica
       }
       return row;
     });
 
     const subTotalValue = group.exams.reduce((acc, curr) => acc + curr.totalValue, 0);
     const subTotalProf = group.exams.reduce((acc, curr) => acc + curr.repasseProfessional, 0);
-    const subTotalClinic = group.exams.reduce((acc, curr) => acc + curr.repasseClinic, 0);
+    const subTotalClinic = subTotalValue - subTotalProf;
 
     const footRow = canViewFinancials 
       ? [[ 'SUBTOTAL', '', '', '', '', '', formatMoney(subTotalValue), formatMoney(subTotalProf), formatMoney(subTotalClinic) ]] 

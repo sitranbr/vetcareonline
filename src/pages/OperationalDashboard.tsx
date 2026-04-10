@@ -198,6 +198,14 @@ export const OperationalDashboard = () => {
   
   const [loggedUserEntity, setLoggedUserEntity] = useState<{ type: 'vet' | 'clinic', id: string } | null>(null);
   
+  const myClinicEntityId = useMemo(() => {
+    return loggedUserEntity?.type === 'clinic'
+      ? loggedUserEntity.id
+      : currentTenant?.type === 'clinic'
+        ? currentTenant.id
+        : null;
+  }, [loggedUserEntity, currentTenant]);
+
   const [editingExamId, setEditingExamId] = useState<string | null>(null);
   const [isSavingExam, setIsSavingExam] = useState(false);
   const [examSaveError, setExamSaveError] = useState<string | null>(null);
@@ -232,10 +240,10 @@ export const OperationalDashboard = () => {
   const [partnerContextOptions, setPartnerContextOptions] = useState<{ profileId: string; name: string; role?: string }[]>([]);
   const clinicContextHydratedRef = useRef(false);
 
-  const [extraClinics, setExtraClinics] = useState<any[]>([]); 
-  const [extraVets, setExtraVets] = useState<any[]>([]);
-  const [guestClinics, setGuestClinics] = useState<any[]>([]); 
-  const [guestVets, setGuestVets] = useState<any[]>([]);
+  const [extraClinics, setExtraClinics] = useState<{id: string, name: string, profileId: string, ownerId?: string}[]>([]); 
+  const [extraVets, setExtraVets] = useState<{id: string, name: string, profileId: string, ownerId?: string}[]>([]);
+  const [guestClinics, setGuestClinics] = useState<{id: string, name: string, profileId: string, ownerId?: string}[]>([]); 
+  const [guestVets, setGuestVets] = useState<{id: string, name: string, profileId: string, ownerId?: string}[]>([]);
   const [ownerClinic, setOwnerClinic] = useState<any>(null); 
 
   useEffect(() => {
@@ -260,28 +268,38 @@ export const OperationalDashboard = () => {
         }
 
         if (partnerIds.length > 0) {
-          const { data: pClinics } = await supabase.from('clinics').select('*').in('profile_id', partnerIds);
-          if (isMounted && pClinics) setExtraClinics(pClinics.map(c => ({ id: c.id, name: c.name, profileId: c.profile_id })));
+          const { data: partnerProfiles } = await supabase.from('profiles').select('id, owner_id').in('id', partnerIds);
+          const { data: partnerGuests } = await supabase.from('profiles').select('id, owner_id').in('owner_id', partnerIds);
           
-          const { data: pVets } = await supabase.from('veterinarians').select('*').in('profile_id', partnerIds);
-          if (isMounted && pVets) setExtraVets(pVets.map(v => ({ id: v.id, name: v.name, profileId: v.profile_id })));
+          const partnerGuestIds = partnerGuests?.map(p => p.id) || [];
+          const allPartnerRelatedIds = Array.from(new Set([...partnerIds, ...partnerGuestIds]));
+          
+          const profileOwnerMap = new Map<string, string>();
+          partnerProfiles?.forEach(p => profileOwnerMap.set(p.id, p.owner_id || p.id));
+          partnerGuests?.forEach(p => profileOwnerMap.set(p.id, p.owner_id || p.id));
+
+          const { data: pClinics } = await supabase.from('clinics').select('*').in('profile_id', allPartnerRelatedIds);
+          if (isMounted && pClinics) setExtraClinics(pClinics.map(c => ({ id: c.id, name: c.name, profileId: c.profile_id, ownerId: profileOwnerMap.get(c.profile_id) })));
+          
+          const { data: pVets } = await supabase.from('veterinarians').select('*').in('profile_id', allPartnerRelatedIds);
+          if (isMounted && pVets) setExtraVets(pVets.map(v => ({ id: v.id, name: v.name, profileId: v.profile_id, ownerId: profileOwnerMap.get(v.profile_id) })));
         } else {
           if (isMounted) { setExtraClinics([]); setExtraVets([]); }
         }
 
-        const { data: guestProfiles, error: guestError } = await supabase.from('profiles').select('id, role').eq('owner_id', targetOwnerId);
+        const { data: guestProfiles, error: guestError } = await supabase.from('profiles').select('id, role, owner_id').eq('owner_id', targetOwnerId);
         
         if (!guestError && guestProfiles && guestProfiles.length > 0) {
           const guestClinicIds = guestProfiles.filter(p => p.role === 'clinic').map(p => p.id);
           if (guestClinicIds.length > 0) {
             const { data: gClinics } = await supabase.from('clinics').select('*').in('profile_id', guestClinicIds);
-            if (isMounted && gClinics) setGuestClinics(gClinics.map(c => ({ id: c.id, name: c.name, profileId: c.profile_id })));
+            if (isMounted && gClinics) setGuestClinics(gClinics.map(c => ({ id: c.id, name: c.name, profileId: c.profile_id, ownerId: targetOwnerId })));
           } else if (isMounted) setGuestClinics([]);
 
           const guestVetIds = guestProfiles.filter(p => p.role === 'vet').map(p => p.id);
           if (guestVetIds.length > 0) {
             const { data: gVets } = await supabase.from('veterinarians').select('*').in('profile_id', guestVetIds);
-            if (isMounted && gVets) setGuestVets(gVets.map(v => ({ id: v.id, name: v.name, profileId: v.profile_id })));
+            if (isMounted && gVets) setGuestVets(gVets.map(v => ({ id: v.id, name: v.name, profileId: v.profile_id, ownerId: targetOwnerId })));
           } else if (isMounted) setGuestVets([]);
         } else {
           if (isMounted) { setGuestClinics([]); setGuestVets([]); }
@@ -477,14 +495,8 @@ export const OperationalDashboard = () => {
   const isRootClinicSubscriber = useMemo(() => {
     if (!isClinicTierUser(user)) return false;
     if (user.ownerId && user.ownerId !== user.id) return false;
-    const cid =
-      loggedUserEntity?.type === 'clinic'
-        ? loggedUserEntity.id
-        : currentTenant?.type === 'clinic'
-          ? currentTenant.id
-          : null;
-    return !!cid;
-  }, [user, loggedUserEntity, currentTenant]);
+    return !!myClinicEntityId;
+  }, [user, myClinicEntityId]);
 
   /**
    * Dropdown "Minha clínica / Parceiro" na lista de exames: qualquer assinante clínica (nível 4)
@@ -492,14 +504,8 @@ export const OperationalDashboard = () => {
    */
   const showClinicPartnerContextDropdown = useMemo(() => {
     if (!isClinicTierUser(user)) return false;
-    const cid =
-      loggedUserEntity?.type === 'clinic'
-        ? loggedUserEntity.id
-        : currentTenant?.type === 'clinic'
-          ? currentTenant.id
-          : null;
-    return !!cid && partnerContextOptions.length > 0;
-  }, [user, loggedUserEntity, currentTenant, partnerContextOptions.length]);
+    return !!myClinicEntityId && partnerContextOptions.length > 0;
+  }, [user, myClinicEntityId, partnerContextOptions.length]);
 
   /**
    * IDs em `veterinarians` cujo profile está em `user.partners` (ex.: vet assinante parceiro).
@@ -514,8 +520,13 @@ export const OperationalDashboard = () => {
     veterinarians.forEach((v) => {
       if (v.profileId && allowed.has(v.profileId)) out.add(v.id);
     });
+    // ALSO ADD EXTRA VETS THAT BELONG TO PARTNERS (like Lineu belonging to Maricota)
+    extraVets.forEach(v => {
+      if (v.ownerId && allowed.has(v.ownerId)) out.add(v.id);
+      if (v.profileId && allowed.has(v.profileId)) out.add(v.id);
+    });
     return out;
-  }, [user?.partners, veterinarians]);
+  }, [user?.partners, veterinarians, extraVets]);
 
   const availableVeterinarians = useMemo(() => {
     let targetClinicId: string | null = null;
@@ -741,26 +752,15 @@ export const OperationalDashboard = () => {
     } else {
       /**
        * Contexto clínica (assinante).
-       * Assinante clínica raiz: por padrão só exames com clinic_id = cadastro da própria clínica (sem misturar parceiros).
-       * Opcionalmente, com clinicPartnerContextProfileId, filtra exames do parceiro (vet na própria clínica ou clínica parceira).
        */
       const ownerProfileId = user?.ownerId && user.ownerId !== user.id ? user.ownerId : user?.id;
       const linkedVetIds = ownerProfileId
-        ? veterinarians.filter((v) => v.profileId === ownerProfileId).map((v) => v.id)
+        ? [
+            ...veterinarians.filter((v) => v.profileId === ownerProfileId).map((v) => v.id),
+            ...guestVets.map(v => v.id)
+          ]
         : [];
       const idsArray = Array.from(clinicIds);
-
-      const myClinicEntityId =
-        loggedUserEntity?.type === 'clinic'
-          ? loggedUserEntity.id
-          : currentTenant?.type === 'clinic'
-            ? currentTenant.id
-            : null;
-
-      const isRootClinicSubscriber =
-        isClinicTierUser(user) &&
-        (!user?.ownerId || user.ownerId === user.id) &&
-        !!myClinicEntityId;
 
       const guestPartner = user?.ownerId && user.ownerId !== user.id;
       if (guestPartner && loggedUserEntity?.type === 'clinic' && loggedUserEntity.id) {
@@ -768,12 +768,16 @@ export const OperationalDashboard = () => {
         if (!clinicPartnerContextProfileId) {
           query = query.eq('clinic_id', loggedUserEntity.id);
         } else {
-          const partnerVet = veterinarians.find((v) => v.profileId === clinicPartnerContextProfileId) || guestVets.find(v => v.profileId === clinicPartnerContextProfileId);
-          const partnerClinic = clinics.find((c) => c.profileId === clinicPartnerContextProfileId) || guestClinics.find(c => c.profileId === clinicPartnerContextProfileId);
+          const partnerVet = veterinarians.find((v) => v.profileId === clinicPartnerContextProfileId) || guestVets.find(v => v.profileId === clinicPartnerContextProfileId) || extraVets.find(v => v.profileId === clinicPartnerContextProfileId);
+          const partnerClinic = clinics.find((c) => c.profileId === clinicPartnerContextProfileId) || guestClinics.find(c => c.profileId === clinicPartnerContextProfileId) || extraClinics.find(c => c.profileId === clinicPartnerContextProfileId);
+          
           if (partnerVet) {
-            query = query.eq('clinic_id', loggedUserEntity.id).eq('veterinarian_id', partnerVet.id);
+            const teamVetIds = [partnerVet.id];
+            extraVets.forEach(v => {
+              if (v.ownerId === partnerVet.profileId && !teamVetIds.includes(v.id)) teamVetIds.push(v.id);
+            });
+            query = query.eq('clinic_id', loggedUserEntity.id).in('veterinarian_id', teamVetIds);
           } else if (partnerClinic) {
-            // FIX: Isola exames da clínica parceira para exibir apenas aqueles realizados pela equipe da clínica atual
             const myOwnVetIds = veterinarians.filter((v) => v.profileId === user.ownerId).map((v) => v.id);
             const internalGuestVetIds = guestVets.map(v => v.id);
             const externalVetIds = Array.from(partnerLinkedVetEntityIds);
@@ -804,34 +808,8 @@ export const OperationalDashboard = () => {
         if (myVetIdsArray.length > 0) {
           query = query.in('veterinarian_id', myVetIdsArray);
         }
-      } else if (isRootClinicSubscriber) {
-        if (!clinicPartnerContextProfileId) {
-          query = query.eq('clinic_id', myClinicEntityId);
-        } else {
-          const partnerVet = veterinarians.find((v) => v.profileId === clinicPartnerContextProfileId) || guestVets.find(v => v.profileId === clinicPartnerContextProfileId);
-          const partnerClinic = clinics.find((c) => c.profileId === clinicPartnerContextProfileId) || guestClinics.find(c => c.profileId === clinicPartnerContextProfileId);
-          
-          if (partnerVet) {
-            // FIX REVERTED: Volta à lógica original de isolamento estrito para a clínica atual
-            query = query.eq('clinic_id', myClinicEntityId).eq('veterinarian_id', partnerVet.id);
-          } else if (partnerClinic) {
-            // FIX: Isola exames da clínica parceira para exibir apenas aqueles realizados pela equipe da clínica atual
-            const myOwnVetIds = veterinarians.filter((v) => v.profileId === user.id).map((v) => v.id);
-            const internalGuestVetIds = guestVets.map(v => v.id);
-            const externalVetIds = Array.from(partnerLinkedVetEntityIds);
-            
-            const allMyVetIds = [...myOwnVetIds, ...internalGuestVetIds, ...externalVetIds];
-            
-            if (allMyVetIds.length > 0) {
-              query = query.eq('clinic_id', partnerClinic.id).in('veterinarian_id', allMyVetIds);
-            } else {
-              query = query.eq('id', '00000000-0000-0000-0000-000000000000');
-            }
-          } else {
-            query = query.eq('clinic_id', myClinicEntityId);
-          }
-        }
       } else {
+        // Root clinic subscriber falls here now! Fetch everything allowed.
         const orParts: string[] = [];
         if (idsArray.length > 0) {
           orParts.push(`clinic_id.in.(${idsArray.join(',')})`);
@@ -887,13 +865,6 @@ export const OperationalDashboard = () => {
 
       if (examsResult.data) {
         let examRows = examsResult.data;
-        if (isRootClinicSubscriber && !clinicPartnerContextProfileId) {
-          examRows = examRows.filter((e: { veterinarian_id?: string | null }) => {
-            const vid = (e.veterinarian_id ?? '').toString().trim();
-            if (!vid) return true;
-            return !partnerLinkedVetEntityIds.has(vid);
-          });
-        }
         setExams(examRows.map(e => ({
           id: e.id, date: e.date, petName: e.pet_name, species: e.species, requesterVet: e.requester_vet, 
           requesterCrmv: e.requester_crmv, modality: e.modality, period: e.period, studies: e.studies, 
@@ -992,7 +963,6 @@ export const OperationalDashboard = () => {
     clinics,
     user,
     availableClinicsForVet,
-    clinicPartnerContextProfileId,
     isRootClinicSubscriber,
     partnerLinkedVetEntityIds,
   ]);
@@ -1231,12 +1201,15 @@ export const OperationalDashboard = () => {
 
   const getVeterinarianName = (vetId: string) => {
     if (!vetId) return 'N/A';
-    const vet = veterinarians.find(v => v.id === vetId || v.profileId === vetId);
+    const allVets = [...veterinarians, ...extraVets, ...guestVets];
+    const vet = allVets.find(v => v.id === vetId || v.profileId === vetId);
     return vet ? vet.name : 'N/A';
   };
 
   const getClinicName = (clinicId: string) => {
-    const clinic = clinics.find(c => c.id === clinicId);
+    if (!clinicId) return 'N/A';
+    const allClinics = [...clinics, ...extraClinics, ...guestClinics];
+    const clinic = allClinics.find(c => c.id === clinicId || c.profileId === clinicId);
     return clinic ? clinic.name : 'N/A';
   };
 
@@ -1273,6 +1246,16 @@ export const OperationalDashboard = () => {
     ''
   ).trim();
 
+  const effectiveOwnerVetId = useMemo(() => {
+    if (!effectiveVeterinarianId) return '';
+    const selectedVetData = extraVets.find(v => v.id === effectiveVeterinarianId) || guestVets.find(v => v.id === effectiveVeterinarianId);
+    if (selectedVetData && selectedVetData.ownerId) {
+       const ownerVet = veterinarians.find(v => v.profileId === selectedVetData.ownerId) || extraVets.find(v => v.profileId === selectedVetData.ownerId);
+       if (ownerVet) return ownerVet.id;
+    }
+    return '';
+  }, [effectiveVeterinarianId, extraVets, guestVets, veterinarians]);
+
   const availableExamsForSelectedClinic = useMemo(() => {
     const examsMap = new Map<string, { value: string, label: string, isCustom: boolean }>();
     const cleanEffectiveId = (effectiveClinicId || '').trim();
@@ -1282,7 +1265,7 @@ export const OperationalDashboard = () => {
     const clinicVetRules = priceRules.filter(r => {
       const ruleVetId = (r.veterinarianId || '').trim();
       const clinicMatch = clinicMatchesExamForm(r.clinicId, cleanEffectiveId);
-      const vetMatch = !ruleVetId || ruleVetId === 'default' || ruleVetId === safeVetId;
+      const vetMatch = !ruleVetId || ruleVetId === 'default' || ruleVetId === safeVetId || (effectiveOwnerVetId && ruleVetId === effectiveOwnerVetId);
       return clinicMatch && vetMatch;
     });
 
@@ -1291,7 +1274,7 @@ export const OperationalDashboard = () => {
     // ocultando os exames genéricos da clínica para evitar "duplicatas" ou exames não autorizados.
     const specificVetRules = clinicVetRules.filter(r => {
       const ruleVetId = (r.veterinarianId || '').trim();
-      return ruleVetId === safeVetId && safeVetId !== '';
+      return (ruleVetId === safeVetId || (effectiveOwnerVetId && ruleVetId === effectiveOwnerVetId)) && ruleVetId !== '';
     });
 
     const rulesToConsider = specificVetRules.length > 0 ? specificVetRules : clinicVetRules;
@@ -1338,7 +1321,7 @@ export const OperationalDashboard = () => {
     }
 
     return Array.from(examsMap.values());
-  }, [priceRules, effectiveClinicId, effectiveVeterinarianId, formData.period, isIndependentVetSubscriber]);
+  }, [priceRules, effectiveClinicId, effectiveVeterinarianId, effectiveOwnerVetId, formData.period, isIndependentVetSubscriber]);
 
   const availablePeriods = useMemo(() => {
     const cleanEffectiveId = (effectiveClinicId || '').trim();
@@ -1347,14 +1330,14 @@ export const OperationalDashboard = () => {
     const relevantRules = priceRules.filter(r => {
       const ruleVetId = (r.veterinarianId || '').trim();
       const clinicMatch = clinicMatchesExamForm(r.clinicId, cleanEffectiveId);
-      const vetMatch = !ruleVetId || ruleVetId === 'default' || ruleVetId === safeVetId;
+      const vetMatch = !ruleVetId || ruleVetId === 'default' || ruleVetId === safeVetId || (effectiveOwnerVetId && ruleVetId === effectiveOwnerVetId);
       return clinicMatch && vetMatch;
     });
 
     // Mesma lógica de isolamento aplicada aos períodos
     const specificVetRules = relevantRules.filter(r => {
       const ruleVetId = (r.veterinarianId || '').trim();
-      return ruleVetId === safeVetId && safeVetId !== '';
+      return (ruleVetId === safeVetId || (effectiveOwnerVetId && ruleVetId === effectiveOwnerVetId)) && ruleVetId !== '';
     });
 
     const rulesToConsider = specificVetRules.length > 0 ? specificVetRules : relevantRules;
@@ -1383,7 +1366,7 @@ export const OperationalDashboard = () => {
     }
 
     return allStandardPeriods.filter(p => periods.has(p.value));
-  }, [priceRules, effectiveClinicId, effectiveVeterinarianId]);
+  }, [priceRules, effectiveClinicId, effectiveVeterinarianId, effectiveOwnerVetId]);
 
   /** Veterinário assinante independente: exige ao menos uma regra de preço com valor antes do 1º exame. */
   const vetHasAtLeastOnePricedRule = useMemo(() => {
@@ -1394,11 +1377,11 @@ export const OperationalDashboard = () => {
     const relevant = priceRules.filter(r => {
       const ruleVetId = (r.veterinarianId || '').trim();
       const clinicMatch = clinicMatchesExamForm(r.clinicId, cleanEffectiveId);
-      const vetMatch = !ruleVetId || ruleVetId === 'default' || ruleVetId === safeVetId;
+      const vetMatch = !ruleVetId || ruleVetId === 'default' || ruleVetId === safeVetId || (effectiveOwnerVetId && ruleVetId === effectiveOwnerVetId);
       return clinicMatch && vetMatch;
     });
     return relevant.some(r => r.valor != null && Number(r.valor) > 0);
-  }, [isIndependentVetSubscriber, priceRules, effectiveClinicId, effectiveVeterinarianId]);
+  }, [isIndependentVetSubscriber, priceRules, effectiveClinicId, effectiveVeterinarianId, effectiveOwnerVetId]);
 
   useEffect(() => {
     if (activeTab === 'form' && availablePeriods.length > 0) {
@@ -1489,7 +1472,7 @@ export const OperationalDashboard = () => {
           effectiveClinicId,
           item.studyDescription,
           effectiveVeterinarianId,
-          { noClinicPartner: vetChoseNoClinic }
+          { noClinicPartner: vetChoseNoClinic, ownerVetId: effectiveOwnerVetId }
         );
         
         return {
@@ -1881,38 +1864,6 @@ export const OperationalDashboard = () => {
     }
   };
 
-  const filteredExamsForReport = useMemo(() => {
-    const filtered = exams.filter(e => {
-      const d = e.date;
-      if (d < reportStartDate || d > reportEndDate) return false;
-
-      if (reportPartnerFilter !== 'all') {
-        const [type, id] = reportPartnerFilter.split('|');
-        if (type === 'vet' && e.veterinarianId !== id) return false;
-        if (type === 'clinic' && e.clinicId !== id) return false;
-      }
-
-      return true;
-    });
-    return [...filtered].sort((a, b) => {
-      const ta = parseISO(a.date).getTime();
-      const tb = parseISO(b.date).getTime();
-      if (Number.isNaN(ta) && Number.isNaN(tb)) return String(a.id).localeCompare(String(b.id));
-      if (Number.isNaN(ta)) return 1;
-      if (Number.isNaN(tb)) return -1;
-      return ta - tb || String(a.id).localeCompare(String(b.id));
-    });
-  }, [exams, reportStartDate, reportEndDate, reportPartnerFilter]);
-
-  const reportStats = useMemo(() => {
-    return filteredExamsForReport.reduce((acc, exam) => ({
-      totalArrecadado: acc.totalArrecadado + exam.totalValue,
-      totalRepasseProf: acc.totalRepasseProf + exam.repasseProfessional,
-      totalRepasseClinic: acc.totalRepasseClinic + exam.repasseClinic,
-      count: acc.count + 1
-    }), { totalArrecadado: 0, totalRepasseProf: 0, totalRepasseClinic: 0, count: 0 });
-  }, [filteredExamsForReport]);
-
   const filteredExamsForList = useMemo(() => {
     let from = examListDateFrom;
     let to = examListDateTo;
@@ -1927,6 +1878,42 @@ export const OperationalDashboard = () => {
       const dayStr = format(parsed, 'yyyy-MM-dd');
       if (from && dayStr < from) return false;
       if (to && dayStr > to) return false;
+
+      // Apply Contexto de Dados filter ONLY for root clinic subscriber
+      if (isRootClinicSubscriber) {
+        if (!clinicPartnerContextProfileId) {
+          // "Minha clínica (Geral)": show exams at my clinic, EXCEPT those done by partner vets
+          if (e.clinicId !== myClinicEntityId) return false;
+          const vid = (e.veterinarianId ?? '').toString().trim();
+          if (vid && partnerLinkedVetEntityIds.has(vid)) return false;
+        } else {
+          // Specific partner selected
+          const partnerVet = veterinarians.find((v) => v.profileId === clinicPartnerContextProfileId) || guestVets.find(v => v.profileId === clinicPartnerContextProfileId) || extraVets.find(v => v.profileId === clinicPartnerContextProfileId);
+          const partnerClinic = clinics.find((c) => c.profileId === clinicPartnerContextProfileId) || guestClinics.find(c => c.profileId === clinicPartnerContextProfileId) || extraClinics.find(c => c.profileId === clinicPartnerContextProfileId);
+          
+          if (partnerVet) {
+            const teamVetIds = new Set([partnerVet.id]);
+            extraVets.forEach(v => {
+              if (v.ownerId === partnerVet.profileId) teamVetIds.add(v.id);
+            });
+            guestVets.forEach(v => {
+              if (v.ownerId === partnerVet.profileId) teamVetIds.add(v.id);
+            });
+            if (e.clinicId !== myClinicEntityId || !teamVetIds.has(e.veterinarianId)) return false;
+          } else if (partnerClinic) {
+            const myOwnVetIds = veterinarians.filter((v) => v.profileId === user?.id).map((v) => v.id);
+            const internalGuestVetIds = guestVets.map(v => v.id);
+            const externalVetIds = Array.from(partnerLinkedVetEntityIds);
+            
+            const allMyVetIds = new Set([...myOwnVetIds, ...internalGuestVetIds, ...externalVetIds]);
+            
+            if (e.clinicId !== partnerClinic.id || !allMyVetIds.has(e.veterinarianId)) return false;
+          } else {
+            if (e.clinicId !== myClinicEntityId) return false;
+          }
+        }
+      }
+
       return true;
     });
     return [...filtered].sort((a, b) => {
@@ -1934,7 +1921,42 @@ export const OperationalDashboard = () => {
       const tb = parseISO(b.date).getTime();
       return examListDateOrder === 'desc' ? tb - ta : ta - tb;
     });
-  }, [exams, filterPet, examListDateOrder, examListDateFrom, examListDateTo]);
+  }, [exams, filterPet, examListDateOrder, examListDateFrom, examListDateTo, isRootClinicSubscriber, clinicPartnerContextProfileId, myClinicEntityId, partnerLinkedVetEntityIds, veterinarians, guestVets, extraVets, clinics, guestClinics, extraClinics, user]);
+
+  const filteredExamsForReport = useMemo(() => {
+    const filtered = exams.filter(e => {
+      const d = e.date;
+      if (d < reportStartDate || d > reportEndDate) return false;
+
+      if (reportPartnerFilter !== 'all') {
+        const [type, id] = reportPartnerFilter.split('|');
+        if (type === 'vet') {
+          const selectedVet = availableVeterinarians.find(v => v.id === id);
+          const teamVetIds = new Set([id]);
+          if (selectedVet && selectedVet.profileId) {
+            extraVets.forEach(v => {
+              if (v.ownerId === selectedVet.profileId) teamVetIds.add(v.id);
+            });
+            guestVets.forEach(v => {
+              if (v.ownerId === selectedVet.profileId) teamVetIds.add(v.id);
+            });
+          }
+          if (!teamVetIds.has(e.veterinarianId)) return false;
+        }
+        if (type === 'clinic' && e.clinicId !== id) return false;
+      }
+
+      return true;
+    });
+    return [...filtered].sort((a, b) => {
+      const ta = parseISO(a.date).getTime();
+      const tb = parseISO(b.date).getTime();
+      if (Number.isNaN(ta) && Number.isNaN(tb)) return String(a.id).localeCompare(String(b.id));
+      if (Number.isNaN(ta)) return 1;
+      if (Number.isNaN(tb)) return -1;
+      return ta - tb || String(a.id).localeCompare(String(b.id));
+    });
+  }, [exams, reportStartDate, reportEndDate, reportPartnerFilter, availableVeterinarians, extraVets, guestVets]);
 
   const examListTotalPages = Math.max(1, Math.ceil(filteredExamsForList.length / EXAM_LIST_PAGE_SIZE));
 
@@ -1950,6 +1972,15 @@ export const OperationalDashboard = () => {
     const start = (examListPage - 1) * EXAM_LIST_PAGE_SIZE;
     return filteredExamsForList.slice(start, start + EXAM_LIST_PAGE_SIZE);
   }, [filteredExamsForList, examListPage]);
+
+  const reportStats = useMemo(() => {
+    return filteredExamsForReport.reduce((acc, exam) => ({
+      totalArrecadado: acc.totalArrecadado + exam.totalValue,
+      totalRepasseProf: acc.totalRepasseProf + exam.repasseProfessional,
+      totalRepasseClinic: acc.totalRepasseClinic + exam.repasseClinic,
+      count: acc.count + 1
+    }), { totalArrecadado: 0, totalRepasseProf: 0, totalRepasseClinic: 0, count: 0 });
+  }, [filteredExamsForReport]);
 
   const listStats = useMemo(() => {
     return filteredExamsForList.reduce((acc, exam) => ({
@@ -2053,7 +2084,7 @@ export const OperationalDashboard = () => {
         effectiveClinicId,
         item.studyDescription,
         effectiveVeterinarianId,
-        { noClinicPartner: vetChoseNoClinic }
+        { noClinicPartner: vetChoseNoClinic, ownerVetId: effectiveOwnerVetId }
       );
       return {
         total: acc.total + values.totalValue,
@@ -2061,7 +2092,7 @@ export const OperationalDashboard = () => {
         clinic: acc.clinic + values.repasseClinic
       };
     }, { total: 0, prof: 0, clinic: 0 });
-  }, [formData.items, formData.period, formData.machineOwner, effectiveClinicId, priceRules, effectiveVeterinarianId, vetChoseNoClinic]);
+  }, [formData.items, formData.period, formData.machineOwner, effectiveClinicId, priceRules, effectiveVeterinarianId, effectiveOwnerVetId, vetChoseNoClinic]);
 
   const selectedPartnerScope = priceForm.clinicId
     ? `clinic|${priceForm.clinicId}`
@@ -2872,7 +2903,11 @@ export const OperationalDashboard = () => {
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-500">A Pagar Clínica</span>
-                      <span className="font-bold text-red-500">{formatMoney(machineStats.professional.repasseClinic)}</span>
+                      <span className="font-bold text-red-500">- {formatMoney(machineStats.professional.repasseClinic)}</span>
+                    </div>
+                    <div className="border-t border-gray-200 mt-2 pt-2 flex justify-between text-sm">
+                      <span className="font-bold text-gray-700">Líquido Profissional</span>
+                      <span className="font-bold text-green-600">{formatMoney(machineStats.professional.total - machineStats.professional.repasseClinic)}</span>
                     </div>
                   </div>
 
@@ -2884,7 +2919,11 @@ export const OperationalDashboard = () => {
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-500">Repasse Profissional</span>
-                      <span className="font-bold text-teal-600">{formatMoney(machineStats.clinic.repasseProf)}</span>
+                      <span className="font-bold text-red-500">- {formatMoney(machineStats.clinic.repasseProf)}</span>
+                    </div>
+                    <div className="border-t border-gray-200 mt-2 pt-2 flex justify-between text-sm">
+                      <span className="font-bold text-gray-700">Líquido Clínica</span>
+                      <span className="font-bold text-green-600">{formatMoney(machineStats.clinic.total - machineStats.clinic.repasseProf)}</span>
                     </div>
                   </div>
 

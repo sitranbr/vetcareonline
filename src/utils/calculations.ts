@@ -80,13 +80,10 @@ export const calculateExamValues = (
 
   const totalValue = baseValue + additionalFee;
   const finalRepasseProf = baseRepasseProf + additionalRepasseProf;
-  let finalRepasseClinic = 0;
-
-  if (machineOwner === 'professional') {
-    finalRepasseClinic = totalValue - finalRepasseProf;
-  } else {
-    finalRepasseClinic = 0;
-  }
+  
+  // O Líquido da Clínica é SEMPRE a diferença entre o Total e o Líquido do Profissional
+  // Isso garante consistência matemática (Total = Prof + Clínica) independentemente de quem é o dono da máquina
+  let finalRepasseClinic = totalValue - finalRepasseProf;
 
   if (options?.noClinicPartner) {
     finalRepasseClinic = 0;
