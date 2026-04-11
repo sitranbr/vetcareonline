@@ -1977,7 +1977,7 @@ export const OperationalDashboard = () => {
     return filteredExamsForReport.reduce((acc, exam) => ({
       totalArrecadado: acc.totalArrecadado + exam.totalValue,
       totalRepasseProf: acc.totalRepasseProf + exam.repasseProfessional,
-      totalRepasseClinic: acc.totalRepasseClinic + exam.repasseClinic,
+      totalRepasseClinic: acc.totalRepasseClinic + (exam.totalValue - exam.repasseProfessional),
       count: acc.count + 1
     }), { totalArrecadado: 0, totalRepasseProf: 0, totalRepasseClinic: 0, count: 0 });
   }, [filteredExamsForReport]);
@@ -1986,25 +1986,28 @@ export const OperationalDashboard = () => {
     return filteredExamsForList.reduce((acc, exam) => ({
       totalArrecadado: acc.totalArrecadado + exam.totalValue,
       totalRepasseProf: acc.totalRepasseProf + exam.repasseProfessional,
-      totalRepasseClinic: acc.totalRepasseClinic + exam.repasseClinic,
+      totalRepasseClinic: acc.totalRepasseClinic + (exam.totalValue - exam.repasseProfessional),
       count: acc.count + 1
     }), { totalArrecadado: 0, totalRepasseProf: 0, totalRepasseClinic: 0, count: 0 });
   }, [filteredExamsForList]);
 
   const machineStats = useMemo(() => {
     const stats = {
-      professional: { total: 0, repasseClinic: 0, count: 0 },
-      clinic: { total: 0, repasseProf: 0, count: 0 }
+      professional: { total: 0, repasseClinic: 0, repasseProf: 0, count: 0 },
+      clinic: { total: 0, repasseProf: 0, repasseClinic: 0, count: 0 }
     };
 
     filteredExamsForReport.forEach(exam => {
+      const liqClinic = exam.totalValue - exam.repasseProfessional;
       if (exam.machineOwner === 'professional') {
         stats.professional.total += exam.totalValue;
-        stats.professional.repasseClinic += exam.repasseClinic;
+        stats.professional.repasseProf += exam.repasseProfessional;
+        stats.professional.repasseClinic += liqClinic;
         stats.professional.count += 1;
       } else {
         stats.clinic.total += exam.totalValue;
         stats.clinic.repasseProf += exam.repasseProfessional;
+        stats.clinic.repasseClinic += liqClinic;
         stats.clinic.count += 1;
       }
     });
@@ -2206,15 +2209,27 @@ export const OperationalDashboard = () => {
           </div>
           
           {showFinancialStats && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="flex flex-col md:flex-row items-center gap-4 mb-6">
               {showCardFaturamento && (
-                <SummaryCard title="Faturamento Total" value={formatMoney(listStats.totalArrecadado)} subtitle={`${listStats.count} exames listados`} icon={DollarSign} colorClass="text-green-600" iconColorClass="text-green-600" />
+                <div className="flex-1 w-full">
+                  <SummaryCard title="Faturamento Total" value={formatMoney(listStats.totalArrecadado)} subtitle={`${listStats.count} exames listados`} icon={DollarSign} colorClass="text-green-600" iconColorClass="text-green-600" />
+                </div>
+              )}
+              {showCardFaturamento && showCardRepasse && (
+                <div className="hidden md:flex items-center justify-center text-gray-300 font-bold text-3xl">-</div>
               )}
               {showCardRepasse && (
-                <SummaryCard title="Repasse Profissional" value={formatMoney(listStats.totalRepasseProf)} subtitle="A Pagar" icon={UserCheck} colorClass="text-blue-600" iconColorClass="text-blue-600" />
+                <div className="flex-1 w-full">
+                  <SummaryCard title="Líquido Profissional" value={formatMoney(listStats.totalRepasseProf)} subtitle={loggedUserEntity?.type === 'vet' ? "Sua Receita Líquida" : "A Pagar ao Veterinário"} icon={UserCheck} colorClass="text-blue-600" iconColorClass="text-blue-600" />
+                </div>
+              )}
+              {showCardFaturamento && showCardRepasse && (
+                <div className="hidden md:flex items-center justify-center text-gray-300 font-bold text-3xl">=</div>
               )}
               {showCardRepasse && (
-                <SummaryCard title="Repasse Clínica" value={formatMoney(listStats.totalRepasseClinic)} subtitle="Receita Líquida" icon={Building2} colorClass="text-purple-600" iconColorClass="text-purple-600" />
+                <div className="flex-1 w-full">
+                  <SummaryCard title="Líquido Clínica" value={formatMoney(listStats.totalRepasseClinic)} subtitle={loggedUserEntity?.type === 'clinic' || user?.level === 1 ? "Receita Líquida da Clínica" : "Retido pela Clínica"} icon={Building2} colorClass="text-purple-600" iconColorClass="text-purple-600" />
+                </div>
               )}
             </div>
           )}
@@ -2803,17 +2818,19 @@ export const OperationalDashboard = () => {
                   <h3 className="font-bold text-petcare-dark">Prévia Total (Todos os exames)</h3>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+                <div className="flex flex-col md:flex-row items-center gap-4">
+                  <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex-1 w-full">
                     <p className="text-xs text-gray-500 mb-1">Valor Total</p>
                     <p className="text-xl font-bold text-gray-800">{formatMoney(previewTotals.total)}</p>
                   </div>
-                  <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-                    <p className="text-xs text-gray-500 mb-1">Repasse Profissional</p>
+                  <div className="hidden md:flex items-center justify-center text-gray-400 font-bold text-2xl">-</div>
+                  <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex-1 w-full">
+                    <p className="text-xs text-gray-500 mb-1">Líquido Profissional</p>
                     <p className="text-xl font-bold text-gray-800">{formatMoney(previewTotals.prof)}</p>
                   </div>
-                  <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-                    <p className="text-xs text-gray-500 mb-1">Repasse Clínica</p>
+                  <div className="hidden md:flex items-center justify-center text-gray-400 font-bold text-2xl">=</div>
+                  <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex-1 w-full">
+                    <p className="text-xs text-gray-500 mb-1">Líquido Clínica</p>
                     <p className="text-xl font-bold text-gray-800">{formatMoney(previewTotals.clinic)}</p>
                   </div>
                 </div>
@@ -2879,10 +2896,18 @@ export const OperationalDashboard = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-               <SummaryCard title="Total Arrecadado" value={formatMoney(reportStats.totalArrecadado)} subtitle={`${reportStats.count} exames`} icon={DollarSign} colorClass="text-green-600" iconColorClass="text-green-600" />
-               <SummaryCard title="Repasse Profissional" value={formatMoney(reportStats.totalRepasseProf)} subtitle="A Pagar" icon={UserCheck} colorClass="text-blue-600" iconColorClass="text-blue-600" />
-               <SummaryCard title="Repasse Clínica" value={formatMoney(reportStats.totalRepasseClinic)} subtitle="Receita Líquida" icon={Building2} colorClass="text-purple-600" iconColorClass="text-purple-600" />
+            <div className="flex flex-col md:flex-row items-center gap-4 mb-6">
+               <div className="flex-1 w-full">
+                 <SummaryCard title="Total Arrecadado" value={formatMoney(reportStats.totalArrecadado)} subtitle={`${reportStats.count} exames`} icon={DollarSign} colorClass="text-green-600" iconColorClass="text-green-600" />
+               </div>
+               <div className="hidden md:flex items-center justify-center text-gray-300 font-bold text-3xl">-</div>
+               <div className="flex-1 w-full">
+                 <SummaryCard title="Líquido Profissional" value={formatMoney(reportStats.totalRepasseProf)} subtitle={loggedUserEntity?.type === 'vet' ? "Sua Receita Líquida" : "A Pagar ao Veterinário"} icon={UserCheck} colorClass="text-blue-600" iconColorClass="text-blue-600" />
+               </div>
+               <div className="hidden md:flex items-center justify-center text-gray-300 font-bold text-3xl">=</div>
+               <div className="flex-1 w-full">
+                 <SummaryCard title="Líquido Clínica" value={formatMoney(reportStats.totalRepasseClinic)} subtitle={loggedUserEntity?.type === 'clinic' || user?.level === 1 ? "Receita Líquida da Clínica" : "Retido pela Clínica"} icon={Building2} colorClass="text-purple-600" iconColorClass="text-purple-600" />
+               </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -3001,6 +3026,7 @@ export const OperationalDashboard = () => {
                     <option value="feriado">{getPeriodLabel('feriado')}</option>
                   </select>
                 </div>
+
                 {priceTablePartnerFilterOptions.length > 1 && (
                   <div className="flex flex-col gap-1 min-w-0 flex-1 sm:flex-initial sm:min-w-[240px]">
                     <div className="flex items-center gap-2 min-w-0">
@@ -3024,6 +3050,7 @@ export const OperationalDashboard = () => {
                     </div>
                   </div>
                 )}
+
                 <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-initial sm:min-w-[200px]">
                   <FileText className="w-4 h-4 text-gray-500 shrink-0" aria-hidden />
                   <label htmlFor="price-table-exam-filter" className="sr-only">Filtrar por exame ou modalidade</label>
@@ -3049,8 +3076,8 @@ export const OperationalDashboard = () => {
                     <th className="p-3">Modalidade</th>
                     <th className="p-3">Período</th>
                     <th className="p-3 text-right">Valor Total</th>
-                    <th className="p-3 text-right">Repasse Prof.</th>
-                    <th className="p-3 text-right">Repasse Clínica</th>
+                    <th className="p-3 text-right">Líquido Prof.</th>
+                    <th className="p-3 text-right">Líquido Clínica</th>
                     {(canEditPriceRule || canDeletePriceRule) && (
                       <th className="p-3 text-center">Ações</th>
                     )}
