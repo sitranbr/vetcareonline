@@ -86,9 +86,9 @@ const isGenericVetId = (vetId?: string | null) => {
  */
 const buildPartnerContextTeamVetEntityIds = (
   rootProfileId: string,
-  veterinarians: { id: string; profileId?: string | null; ownerId?: string | null }[],
-  guestVets: { id: string; profileId?: string; ownerId?: string | null }[],
-  extraVets: { id: string; profileId?: string; ownerId?: string | null }[],
+  veterinarians: { id: string; profileId?: string | null | undefined; ownerId?: string | null | undefined }[],
+  guestVets: { id: string; profileId?: string | null | undefined; ownerId?: string | null | undefined }[],
+  extraVets: { id: string; profileId?: string | null | undefined; ownerId?: string | null | undefined }[],
 ): Set<string> => {
   const root = String(rootProfileId || '').trim();
   if (!root) return new Set();
@@ -120,6 +120,34 @@ const buildPartnerContextTeamVetEntityIds = (
     });
   }
   return team;
+};
+
+/**
+ * Exame com executor `vetEntityId` pertence ao parceiro `partnerRootProfileId` (UUID do dropdown)?
+ * Usa o mesmo fechamento transitivo que a lista + verificação direta profile/owner quando a equipe não fecha (dados parciais).
+ */
+const executorMatchesPartnerRoot = (
+  vetEntityId: string | null | undefined,
+  partnerRootProfileId: string,
+  veterinarians: { id: string; profileId?: string | null | undefined; ownerId?: string | null | undefined }[],
+  guestVets: { id: string; profileId?: string | null | undefined; ownerId?: string | null | undefined }[],
+  extraVets: { id: string; profileId?: string | null | undefined; ownerId?: string | null | undefined }[],
+  /** Opcional: equipe já calculada (evita O(n) reconstruções na lista/relatório). */
+  precomputedTeam?: Set<string> | null,
+): boolean => {
+  const vid = String(vetEntityId ?? '').trim();
+  const root = String(partnerRootProfileId ?? '').trim();
+  if (!vid || !root) return false;
+  const team =
+    precomputedTeam ??
+    buildPartnerContextTeamVetEntityIds(partnerRootProfileId, veterinarians, guestVets, extraVets);
+  if (team.has(vid)) return true;
+  const pools = [...veterinarians, ...guestVets, ...extraVets];
+  const row = pools.find((x) => x.id === vid);
+  if (!row) return false;
+  const pid = String(row.profileId ?? '').trim();
+  const oid = String(row.ownerId ?? '').trim();
+  return pid === root || oid === root;
 };
 
 /**
@@ -324,7 +352,34 @@ export const OperationalDashboard = () => {
           if (isMounted && pClinics) setExtraClinics(pClinics.map(c => ({ id: c.id, name: c.name, profileId: c.profile_id, ownerId: profileOwnerMap.get(c.profile_id) })));
           
           const { data: pVets } = await supabase.from('veterinarians').select('*').in('profile_id', allPartnerRelatedIds);
-          if (isMounted && pVets) setExtraVets(pVets.map(v => ({ id: v.id, name: v.name, profileId: v.profile_id, ownerId: profileOwnerMap.get(v.profile_id) })));
+          /** owner_id real por profile_id (evita `owner_id || id` que mascarava null e quebrava vínculo com clínica parceira). */
+          const vetProfileOwnerById = new Map<string, string | null | undefined>();
+          if (pVets && pVets.length > 0) {
+            const vetProfIds = Array.from(
+              new Set(
+                pVets.map((v: { profile_id?: string }) => v.profile_id).filter((x): x is string => !!x && String(x).trim() !== ''),
+              ),
+            );
+            if (vetProfIds.length > 0) {
+              const { data: vetProfRows } = await supabase.from('profiles').select('id, owner_id').in('id', vetProfIds);
+              vetProfRows?.forEach((p: { id: string; owner_id: string | null }) => {
+                vetProfileOwnerById.set(p.id, p.owner_id);
+              });
+            }
+          }
+          if (isMounted && pVets) {
+            setExtraVets(
+              pVets.map((v: { id: string; name: string; profile_id: string }) => ({
+                id: v.id,
+                name: v.name,
+                profileId: v.profile_id,
+                ownerId:
+                  vetProfileOwnerById.has(v.profile_id)
+                    ? vetProfileOwnerById.get(v.profile_id) ?? undefined
+                    : profileOwnerMap.get(v.profile_id),
+              })),
+            );
+          }
         } else {
           if (isMounted) { setExtraClinics([]); setExtraVets([]); }
         }
@@ -588,11 +643,8 @@ export const OperationalDashboard = () => {
     return out;
   }, [user?.ownerId, user?.id, veterinarians, guestVets, extraVets, myClinicEntityId]);
 
-  /**
-   * Equipe do parceiro escolhido no dropdown (profile UUID do item em `partnerContextOptions`).
-   * Usado para listar exames na unidade do assinante executados por essa equipe.
-   */
-  const partnerContextTeamVetEntityIds = useMemo(() => {
+  /** Equipe do parceiro selecionado na lista (cache para não reconstruir por exame). */
+  const partnerContextTeamForList = useMemo(() => {
     if (!clinicPartnerContextProfileId?.trim()) return null;
     return buildPartnerContextTeamVetEntityIds(
       clinicPartnerContextProfileId,
@@ -646,6 +698,24 @@ export const OperationalDashboard = () => {
       return false;
     });
   }, [veterinarians, extraVets, guestVets, clinics, loggedUserEntity, currentTenant, user]);
+
+  /** Equipe do veterinário escolhido no filtro de relatórios (vet|id). */
+  const reportVetFilterTeam = useMemo(() => {
+    if (reportPartnerFilter === 'all' || !reportPartnerFilter.startsWith('vet|')) return null;
+    const rawId = reportPartnerFilter.slice('vet|'.length);
+    const selectedVet = availableVeterinarians.find((v) => v.id === rawId);
+    if (!selectedVet?.profileId) {
+      const s = new Set<string>();
+      if (rawId) s.add(rawId);
+      return s;
+    }
+    return buildPartnerContextTeamVetEntityIds(
+      selectedVet.profileId,
+      veterinarians,
+      guestVets,
+      extraVets,
+    );
+  }, [reportPartnerFilter, availableVeterinarians, veterinarians, guestVets, extraVets]);
 
   const availableClinicsForVet = useMemo(() => {
     let targetVetId: string | null = null;
@@ -1960,11 +2030,19 @@ export const OperationalDashboard = () => {
           const vid = (e.veterinarianId ?? '').toString().trim();
           if (vid && !subscriberInternalVetEntityIds.has(vid)) return false;
         } else if (clinicPartnerContextProfileId) {
-          const team = partnerContextTeamVetEntityIds;
-          if (!team || team.size === 0) return false;
           if (e.clinicId !== myClinicEntityId) return false;
-          const vid = (e.veterinarianId ?? '').toString().trim();
-          if (!vid || !team.has(vid)) return false;
+          if (
+            !executorMatchesPartnerRoot(
+              e.veterinarianId,
+              clinicPartnerContextProfileId,
+              veterinarians,
+              guestVets,
+              extraVets,
+              partnerContextTeamForList,
+            )
+          ) {
+            return false;
+          }
         }
       }
 
@@ -1985,7 +2063,10 @@ export const OperationalDashboard = () => {
     clinicPartnerContextProfileId,
     myClinicEntityId,
     subscriberInternalVetEntityIds,
-    partnerContextTeamVetEntityIds,
+    partnerContextTeamForList,
+    veterinarians,
+    guestVets,
+    extraVets,
   ]);
 
   const filteredExamsForReport = useMemo(() => {
@@ -1997,16 +2078,24 @@ export const OperationalDashboard = () => {
         const [type, id] = reportPartnerFilter.split('|');
         if (type === 'vet') {
           const selectedVet = availableVeterinarians.find(v => v.id === id);
-          const teamVetIds = new Set([id]);
-          if (selectedVet && selectedVet.profileId) {
-            extraVets.forEach(v => {
-              if (v.ownerId === selectedVet.profileId) teamVetIds.add(v.id);
-            });
-            guestVets.forEach(v => {
-              if (v.ownerId === selectedVet.profileId) teamVetIds.add(v.id);
-            });
+          const ev = (e.veterinarianId ?? '').toString().trim();
+          if (!ev) return false;
+          if (selectedVet?.profileId) {
+            if (
+              !executorMatchesPartnerRoot(
+                ev,
+                selectedVet.profileId,
+                veterinarians,
+                guestVets,
+                extraVets,
+                reportVetFilterTeam,
+              )
+            ) {
+              return false;
+            }
+          } else if (ev !== id) {
+            return false;
           }
-          if (!teamVetIds.has(e.veterinarianId)) return false;
         }
         if (type === 'clinic' && e.clinicId !== id) return false;
       }
@@ -2021,7 +2110,17 @@ export const OperationalDashboard = () => {
       if (Number.isNaN(tb)) return -1;
       return ta - tb || String(a.id).localeCompare(String(b.id));
     });
-  }, [exams, reportStartDate, reportEndDate, reportPartnerFilter, availableVeterinarians, extraVets, guestVets]);
+  }, [
+    exams,
+    reportStartDate,
+    reportEndDate,
+    reportPartnerFilter,
+    availableVeterinarians,
+    reportVetFilterTeam,
+    veterinarians,
+    guestVets,
+    extraVets,
+  ]);
 
   const examListTotalPages = Math.max(1, Math.ceil(filteredExamsForList.length / EXAM_LIST_PAGE_SIZE));
 
