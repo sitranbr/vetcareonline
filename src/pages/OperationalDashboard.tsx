@@ -81,6 +81,48 @@ const isGenericVetId = (vetId?: string | null) => {
 };
 
 /**
+ * Veterinários cujo perfil pertence à árvore do parceiro selecionado (profile raiz = item do dropdown).
+ * Inclui equipe direta (ownerId === raiz), o próprio executor com profileId === raiz e subordinados (owner aponta para perfil de outro membro já incluído).
+ */
+const buildPartnerContextTeamVetEntityIds = (
+  rootProfileId: string,
+  veterinarians: { id: string; profileId?: string | null; ownerId?: string | null }[],
+  guestVets: { id: string; profileId?: string; ownerId?: string | null }[],
+  extraVets: { id: string; profileId?: string; ownerId?: string | null }[],
+): Set<string> => {
+  const root = String(rootProfileId || '').trim();
+  if (!root) return new Set();
+  const allRows = [...veterinarians, ...guestVets, ...extraVets];
+  const byId = new Map(allRows.map((r) => [r.id, r]));
+  const team = new Set<string>();
+  let progress = true;
+  while (progress) {
+    progress = false;
+    allRows.forEach((v) => {
+      if (team.has(v.id)) return;
+      const pid = String(v.profileId ?? '').trim();
+      const oid = String(v.ownerId ?? '').trim();
+      if (pid === root || oid === root) {
+        team.add(v.id);
+        progress = true;
+        return;
+      }
+      if (!oid) return;
+      for (const memberId of team) {
+        const member = byId.get(memberId);
+        const mp = member ? String(member.profileId ?? '').trim() : '';
+        if (mp && mp === oid) {
+          team.add(v.id);
+          progress = true;
+          return;
+        }
+      }
+    });
+  }
+  return team;
+};
+
+/**
  * Filtro unificado da tabela de preços (vet|id, clinic|id ou UUID legado sem prefixo).
  * Nunca incluir regras "todos os veterinários" ao filtrar um parceiro específico (evita vazamento no assinante).
  */
@@ -545,6 +587,20 @@ export const OperationalDashboard = () => {
     });
     return out;
   }, [user?.ownerId, user?.id, veterinarians, guestVets, extraVets, myClinicEntityId]);
+
+  /**
+   * Equipe do parceiro escolhido no dropdown (profile UUID do item em `partnerContextOptions`).
+   * Usado para listar exames na unidade do assinante executados por essa equipe.
+   */
+  const partnerContextTeamVetEntityIds = useMemo(() => {
+    if (!clinicPartnerContextProfileId?.trim()) return null;
+    return buildPartnerContextTeamVetEntityIds(
+      clinicPartnerContextProfileId,
+      veterinarians,
+      guestVets,
+      extraVets,
+    );
+  }, [clinicPartnerContextProfileId, veterinarians, guestVets, extraVets]);
 
   const availableVeterinarians = useMemo(() => {
     let targetClinicId: string | null = null;
@@ -1903,37 +1959,12 @@ export const OperationalDashboard = () => {
           if (e.clinicId !== myClinicEntityId) return false;
           const vid = (e.veterinarianId ?? '').toString().trim();
           if (vid && !subscriberInternalVetEntityIds.has(vid)) return false;
-        } else {
-          // Specific partner selected
-          const partnerVet = veterinarians.find((v) => v.profileId === clinicPartnerContextProfileId) || guestVets.find(v => v.profileId === clinicPartnerContextProfileId) || extraVets.find(v => v.profileId === clinicPartnerContextProfileId);
-          const partnerClinic = clinics.find((c) => c.profileId === clinicPartnerContextProfileId) || guestClinics.find(c => c.profileId === clinicPartnerContextProfileId) || extraClinics.find(c => c.profileId === clinicPartnerContextProfileId);
-          
-          if (partnerVet) {
-            const teamVetIds = new Set([partnerVet.id]);
-            extraVets.forEach(v => {
-              if (v.ownerId === partnerVet.profileId) teamVetIds.add(v.id);
-            });
-            guestVets.forEach(v => {
-              if (v.ownerId === partnerVet.profileId) teamVetIds.add(v.id);
-            });
-            if (e.clinicId !== myClinicEntityId || !teamVetIds.has(e.veterinarianId)) return false;
-          } else if (partnerClinic) {
-            const pid = partnerClinic.profileId;
-            const teamVetIds = new Set<string>();
-            veterinarians.forEach((v) => {
-              if (v.profileId === pid) teamVetIds.add(v.id);
-            });
-            extraVets.forEach((v) => {
-              if (v.ownerId === pid || v.profileId === pid) teamVetIds.add(v.id);
-            });
-            guestVets.forEach((v) => {
-              if (v.ownerId === pid || v.profileId === pid) teamVetIds.add(v.id);
-            });
-            /** Na minha unidade, executados pela equipe do parceiro-clínica (ex.: vet da Maricota na Univet). */
-            if (e.clinicId !== myClinicEntityId || !teamVetIds.has(e.veterinarianId)) return false;
-          } else {
-            if (e.clinicId !== myClinicEntityId) return false;
-          }
+        } else if (clinicPartnerContextProfileId) {
+          const team = partnerContextTeamVetEntityIds;
+          if (!team || team.size === 0) return false;
+          if (e.clinicId !== myClinicEntityId) return false;
+          const vid = (e.veterinarianId ?? '').toString().trim();
+          if (!vid || !team.has(vid)) return false;
         }
       }
 
@@ -1953,15 +1984,8 @@ export const OperationalDashboard = () => {
     isRootClinicSubscriber,
     clinicPartnerContextProfileId,
     myClinicEntityId,
-    partnerLinkedVetEntityIds,
     subscriberInternalVetEntityIds,
-    veterinarians,
-    guestVets,
-    extraVets,
-    clinics,
-    guestClinics,
-    extraClinics,
-    user,
+    partnerContextTeamVetEntityIds,
   ]);
 
   const filteredExamsForReport = useMemo(() => {
