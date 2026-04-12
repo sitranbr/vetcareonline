@@ -509,8 +509,7 @@ export const OperationalDashboard = () => {
 
   /**
    * IDs em `veterinarians` cujo profile está em `user.partners` (ex.: vet assinante parceiro).
-   * Exames com clinic_id = minha clínica mas veterinarian_id = parceiro são atendimento na minha unidade,
-   * porém pertencem ao contexto do parceiro — não entram em "Minha clínica".
+   * "Minha clínica (Geral)" exclui esses executores na própria unidade; também usado em filtros de preço/contexto.
    */
   const partnerLinkedVetEntityIds = useMemo(() => {
     const partnerProfileIds = user?.partners;
@@ -1882,7 +1881,7 @@ export const OperationalDashboard = () => {
       // Apply Contexto de Dados filter ONLY for root clinic subscriber
       if (isRootClinicSubscriber) {
         if (!clinicPartnerContextProfileId) {
-          // "Minha clínica (Geral)": show exams at my clinic, EXCEPT those done by partner vets
+          // "Minha clínica (Geral)": unidade = minha clínica, exc. executor veterinário parceiro (vai no contexto do parceiro).
           if (e.clinicId !== myClinicEntityId) return false;
           const vid = (e.veterinarianId ?? '').toString().trim();
           if (vid && partnerLinkedVetEntityIds.has(vid)) return false;
@@ -1901,13 +1900,19 @@ export const OperationalDashboard = () => {
             });
             if (e.clinicId !== myClinicEntityId || !teamVetIds.has(e.veterinarianId)) return false;
           } else if (partnerClinic) {
-            const myOwnVetIds = veterinarians.filter((v) => v.profileId === user?.id).map((v) => v.id);
-            const internalGuestVetIds = guestVets.map(v => v.id);
-            const externalVetIds = Array.from(partnerLinkedVetEntityIds);
-            
-            const allMyVetIds = new Set([...myOwnVetIds, ...internalGuestVetIds, ...externalVetIds]);
-            
-            if (e.clinicId !== partnerClinic.id || !allMyVetIds.has(e.veterinarianId)) return false;
+            const pid = partnerClinic.profileId;
+            const teamVetIds = new Set<string>();
+            veterinarians.forEach((v) => {
+              if (v.profileId === pid) teamVetIds.add(v.id);
+            });
+            extraVets.forEach((v) => {
+              if (v.ownerId === pid || v.profileId === pid) teamVetIds.add(v.id);
+            });
+            guestVets.forEach((v) => {
+              if (v.ownerId === pid || v.profileId === pid) teamVetIds.add(v.id);
+            });
+            /** Na minha unidade, executados pela equipe do parceiro-clínica (ex.: vet da Maricota na Univet). */
+            if (e.clinicId !== myClinicEntityId || !teamVetIds.has(e.veterinarianId)) return false;
           } else {
             if (e.clinicId !== myClinicEntityId) return false;
           }
@@ -1921,7 +1926,24 @@ export const OperationalDashboard = () => {
       const tb = parseISO(b.date).getTime();
       return examListDateOrder === 'desc' ? tb - ta : ta - tb;
     });
-  }, [exams, filterPet, examListDateOrder, examListDateFrom, examListDateTo, isRootClinicSubscriber, clinicPartnerContextProfileId, myClinicEntityId, partnerLinkedVetEntityIds, veterinarians, guestVets, extraVets, clinics, guestClinics, extraClinics, user]);
+  }, [
+    exams,
+    filterPet,
+    examListDateOrder,
+    examListDateFrom,
+    examListDateTo,
+    isRootClinicSubscriber,
+    clinicPartnerContextProfileId,
+    myClinicEntityId,
+    partnerLinkedVetEntityIds,
+    veterinarians,
+    guestVets,
+    extraVets,
+    clinics,
+    guestClinics,
+    extraClinics,
+    user,
+  ]);
 
   const filteredExamsForReport = useMemo(() => {
     const filtered = exams.filter(e => {
@@ -2275,9 +2297,9 @@ export const OperationalDashboard = () => {
                     <LinkIcon className="w-5 h-5 text-petcare-DEFAULT" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Contexto de dados</p>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Resumo dos Parceiros</p>
                     <p className="text-xs text-gray-600 mt-0.5">
-                      Por padrão, apenas a sua clínica. Escolha um parceiro vinculado para ver o subconjunto autorizado dele na lista abaixo.
+                      Por padrão, apenas a sua clínica. Escolha um parceiro vinculado para ver sua listagem de exames.
                     </p>
                   </div>
                 </div>
