@@ -509,7 +509,7 @@ export const OperationalDashboard = () => {
 
   /**
    * IDs em `veterinarians` cujo profile está em `user.partners` (ex.: vet assinante parceiro).
-   * "Minha clínica (Geral)" exclui esses executores na própria unidade; também usado em filtros de preço/contexto.
+   * Usado em filtros de preço e no modo parceiro-clínica convidado; listagem "Minha clínica" usa `subscriberInternalVetEntityIds`.
    */
   const partnerLinkedVetEntityIds = useMemo(() => {
     const partnerProfileIds = user?.partners;
@@ -526,6 +526,25 @@ export const OperationalDashboard = () => {
     });
     return out;
   }, [user?.partners, veterinarians, extraVets]);
+
+  /**
+   * Executores considerados equipe interna do assinante (não veterinários carregados como `extraVets` de parceiros).
+   * "Minha clínica (Geral)" só lista exames com executor neste conjunto (ou sem executor).
+   */
+  const subscriberInternalVetEntityIds = useMemo(() => {
+    const partnerExternalIds = new Set(extraVets.map((v) => v.id));
+    const out = new Set<string>();
+    const ownerPid = user?.ownerId && user.ownerId !== user.id ? user.ownerId : user?.id;
+    guestVets.forEach((v) => {
+      if (!partnerExternalIds.has(v.id)) out.add(v.id);
+    });
+    veterinarians.forEach((v) => {
+      if (partnerExternalIds.has(v.id)) return;
+      if (ownerPid && v.profileId === ownerPid) out.add(v.id);
+      if (myClinicEntityId && v.linkedClinicIds?.includes(myClinicEntityId)) out.add(v.id);
+    });
+    return out;
+  }, [user?.ownerId, user?.id, veterinarians, guestVets, extraVets, myClinicEntityId]);
 
   const availableVeterinarians = useMemo(() => {
     let targetClinicId: string | null = null;
@@ -1127,7 +1146,7 @@ export const OperationalDashboard = () => {
   } = permFlags;
 
   /**
-   * Assinante clínica: exames da própria operação (não os realizados na unidade por veterinário parceiro em profiles.partners).
+   * Assinante clínica: exames da própria operação (equipe interna na unidade; executores de parceiro vão no contexto do parceiro).
    */
   const examBelongsToSubscriberClinic = (exam: Exam): boolean => {
     if (!isClinicTierUser(user)) return true;
@@ -1135,8 +1154,7 @@ export const OperationalDashboard = () => {
     if ((exam.clinicId || '').trim() !== (loggedUserEntity.id || '').trim()) return false;
     const vid = (exam.veterinarianId || '').trim();
     if (!vid) return true;
-    if (partnerLinkedVetEntityIds.has(vid)) return false;
-    return true;
+    return subscriberInternalVetEntityIds.has(vid);
   };
 
   const examCanDeleteRow = (exam: Exam): boolean => {
@@ -1881,10 +1899,10 @@ export const OperationalDashboard = () => {
       // Apply Contexto de Dados filter ONLY for root clinic subscriber
       if (isRootClinicSubscriber) {
         if (!clinicPartnerContextProfileId) {
-          // "Minha clínica (Geral)": unidade = minha clínica, exc. executor veterinário parceiro (vai no contexto do parceiro).
+          // "Minha clínica (Geral)": unidade = minha clínica e executor = equipe interna (parceiros externos só no dropdown).
           if (e.clinicId !== myClinicEntityId) return false;
           const vid = (e.veterinarianId ?? '').toString().trim();
-          if (vid && partnerLinkedVetEntityIds.has(vid)) return false;
+          if (vid && !subscriberInternalVetEntityIds.has(vid)) return false;
         } else {
           // Specific partner selected
           const partnerVet = veterinarians.find((v) => v.profileId === clinicPartnerContextProfileId) || guestVets.find(v => v.profileId === clinicPartnerContextProfileId) || extraVets.find(v => v.profileId === clinicPartnerContextProfileId);
@@ -1936,6 +1954,7 @@ export const OperationalDashboard = () => {
     clinicPartnerContextProfileId,
     myClinicEntityId,
     partnerLinkedVetEntityIds,
+    subscriberInternalVetEntityIds,
     veterinarians,
     guestVets,
     extraVets,
