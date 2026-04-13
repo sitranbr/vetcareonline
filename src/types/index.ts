@@ -159,12 +159,6 @@ export interface Exam {
   
   veterinarianId: string;
   clinicId: string;
-  /**
-   * Perfil (profiles.id) do tenant que originou o exame quando o local (`clinicId`) é de outro parceiro.
-   * Ex.: exame criado pela operação Maricotas com unidade = Univet.
-   */
-  originatingPartnerProfileId?: string | null;
-
   machineOwner: MachineOwner;
 
   totalValue: number;

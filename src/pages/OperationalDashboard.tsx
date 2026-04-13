@@ -150,54 +150,6 @@ const executorMatchesPartnerRoot = (
   return pid === root || oid === root;
 };
 
-/** Perfil do tenant que opera o exame (convidado → titular; raiz em unidade de perfil parceiro → próprio perfil). */
-const computeOriginatingPartnerProfileIdForSave = (
-  args: { userId: string; userOwnerId?: string | null; clinicIdForExam: string | null | undefined },
-  clinicPools: {
-    clinics: { id: string; profileId?: string | null }[];
-    extraClinics: { id: string; profileId: string }[];
-    guestClinics: { id: string; profileId: string }[];
-  },
-): string | null => {
-  const uid = args.userId;
-  const owner = args.userOwnerId;
-  if (owner && owner !== uid) {
-    return owner;
-  }
-  const cid = (args.clinicIdForExam ?? '').toString().trim();
-  if (!cid) return null;
-  const loc = [...clinicPools.clinics, ...clinicPools.extraClinics, ...clinicPools.guestClinics].find(
-    (c) => c.id === cid,
-  );
-  const locPid = (loc?.profileId ?? '').toString().trim();
-  if (locPid && locPid !== uid) {
-    return uid;
-  }
-  return null;
-};
-
-const examMatchesPartnerContextSelection = (
-  exam: Pick<Exam, 'veterinarianId' | 'originatingPartnerProfileId' | 'clinicId'>,
-  partnerRootProfileId: string,
-  veterinarians: { id: string; profileId?: string | null | undefined; ownerId?: string | null | undefined }[],
-  guestVets: { id: string; profileId?: string | null | undefined; ownerId?: string | null | undefined }[],
-  extraVets: { id: string; profileId?: string | null | undefined; ownerId?: string | null | undefined }[],
-  precomputedTeam?: Set<string> | null,
-): boolean => {
-  const root = String(partnerRootProfileId ?? '').trim();
-  if (!root) return false;
-  const opp = String(exam.originatingPartnerProfileId ?? '').trim();
-  if (opp && opp === root) return true;
-  return executorMatchesPartnerRoot(
-    exam.veterinarianId,
-    root,
-    veterinarians,
-    guestVets,
-    extraVets,
-    precomputedTeam,
-  );
-};
-
 /**
  * Filtro unificado da tabela de preços (vet|id, clinic|id ou UUID legado sem prefixo).
  * Nunca incluir regras "todos os veterinários" ao filtrar um parceiro específico (evita vazamento no assinante).
@@ -1061,9 +1013,7 @@ export const OperationalDashboard = () => {
           id: e.id, date: e.date, petName: e.pet_name, species: e.species, requesterVet: e.requester_vet, 
           requesterCrmv: e.requester_crmv, modality: e.modality, period: e.period, studies: e.studies, 
           studyDescription: e.study_description, rxStudies: e.rx_studies, veterinarianId: e.veterinarian_id, 
-          clinicId: e.clinic_id,
-          originatingPartnerProfileId: (e as { originating_partner_profile_id?: string | null }).originating_partner_profile_id ?? null,
-          machineOwner: e.machine_owner, totalValue: e.total_value, 
+          clinicId: e.clinic_id, machineOwner: e.machine_owner, totalValue: e.total_value, 
           repasseProfessional: e.repasse_professional, repasseClinic: e.repasse_clinic, createdAt: e.created_at, 
           reportContent: e.report_content, reportImages: e.report_images, status: e.status
         })));
@@ -1328,11 +1278,6 @@ export const OperationalDashboard = () => {
     if (!isClinicTierUser(user)) return true;
     if (!loggedUserEntity || loggedUserEntity.type !== 'clinic') return false;
     if ((exam.clinicId || '').trim() !== (loggedUserEntity.id || '').trim()) return false;
-    const rootId =
-      user?.ownerId && user.ownerId !== user.id ? user.ownerId : (user?.id ?? '');
-    const opp = (exam.originatingPartnerProfileId ?? '').toString().trim();
-    if (opp && opp !== rootId) return false;
-    if (opp) return true;
     const vid = (exam.veterinarianId || '').trim();
     if (!vid) return true;
     return subscriberInternalVetEntityIds.has(vid);
@@ -1660,13 +1605,6 @@ export const OperationalDashboard = () => {
           ? null
           : rawClinic || null;
 
-      const originatingPartnerProfileIdForSave = user
-        ? computeOriginatingPartnerProfileIdForSave(
-            { userId: user.id, userOwnerId: user.ownerId, clinicIdForExam: clinicForSave },
-            { clinics, extraClinics, guestClinics },
-          )
-        : null;
-
       const examsToSave = formData.items.map(item => {
         const values = calculateExamValues(
           item.modality,
@@ -1696,8 +1634,7 @@ export const OperationalDashboard = () => {
           machine_owner: formData.machineOwner,
           veterinarian_id: effectiveVeterinarianId,
           clinic_id: clinicForSave,
-          originating_partner_profile_id: originatingPartnerProfileIdForSave,
-
+          
           total_value: values.totalValue,
           repasse_professional: values.repasseProfessional,
           repasse_clinic: values.repasseClinic,
@@ -2088,19 +2025,15 @@ export const OperationalDashboard = () => {
       // Apply Contexto de Dados filter ONLY for root clinic subscriber
       if (isRootClinicSubscriber) {
         if (!clinicPartnerContextProfileId) {
-          // "Minha clínica (Geral)": unidade = minha clínica; exclui operação originada por outro tenant (originating_partner_profile_id).
+          // "Minha clínica (Geral)": unidade = minha clínica e executor = equipe interna (parceiros externos só no dropdown).
           if (e.clinicId !== myClinicEntityId) return false;
-          const rootId =
-            user?.ownerId && user.ownerId !== user.id ? user.ownerId : (user?.id ?? '');
-          const opp = (e.originatingPartnerProfileId ?? '').toString().trim();
-          if (opp && opp !== rootId) return false;
           const vid = (e.veterinarianId ?? '').toString().trim();
-          if (!opp && vid && !subscriberInternalVetEntityIds.has(vid)) return false;
+          if (vid && !subscriberInternalVetEntityIds.has(vid)) return false;
         } else if (clinicPartnerContextProfileId) {
           if (e.clinicId !== myClinicEntityId) return false;
           if (
-            !examMatchesPartnerContextSelection(
-              e,
+            !executorMatchesPartnerRoot(
+              e.veterinarianId,
               clinicPartnerContextProfileId,
               veterinarians,
               guestVets,
@@ -2134,7 +2067,6 @@ export const OperationalDashboard = () => {
     veterinarians,
     guestVets,
     extraVets,
-    user,
   ]);
 
   const filteredExamsForReport = useMemo(() => {
@@ -2150,8 +2082,8 @@ export const OperationalDashboard = () => {
           if (!ev) return false;
           if (selectedVet?.profileId) {
             if (
-              !examMatchesPartnerContextSelection(
-                e,
+              !executorMatchesPartnerRoot(
+                ev,
                 selectedVet.profileId,
                 veterinarians,
                 guestVets,
