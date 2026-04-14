@@ -19,7 +19,6 @@ export function deriveFilteredExamsForList(params: {
   guestClinics: { id: string; profileId: string }[];
   extraClinics: { id: string; profileId: string }[];
   myClinicEntityId: string | null;
-  subscriberInternalVetEntityIds: Set<string>;
   partnerContextTeamForList: Set<string> | null;
   veterinarians: Veterinarian[];
   guestVets: PartnerVetRow[];
@@ -38,7 +37,6 @@ export function deriveFilteredExamsForList(params: {
     guestClinics,
     extraClinics,
     myClinicEntityId,
-    subscriberInternalVetEntityIds,
     partnerContextTeamForList,
     veterinarians,
     guestVets,
@@ -62,9 +60,9 @@ export function deriveFilteredExamsForList(params: {
 
     if (isRootClinicSubscriber) {
       if (!clinicPartnerContextProfileId) {
+        // Todos os exames cuja unidade (clinic_id) é a minha — inclusive veterinários parceiros
+        // convidados de outra clínica (ex.: Lineu/Maricota atendendo na Univet).
         if (e.clinicId !== myClinicEntityId) return false;
-        const vid = (e.veterinarianId ?? '').toString().trim();
-        if (vid && !subscriberInternalVetEntityIds.has(vid)) return false;
       } else {
         const opt = partnerContextOptions.find((o) => o.profileId === clinicPartnerContextProfileId);
         const isPartnerClinic = String(opt?.role ?? '').toLowerCase() === 'clinic';
@@ -75,8 +73,19 @@ export function deriveFilteredExamsForList(params: {
             guestClinics,
             extraClinics,
           );
-          if (!partnerClinicEntityId) return false;
-          if (e.clinicId !== partnerClinicEntityId) return false;
+          if (!partnerClinicEntityId || !myClinicEntityId) return false;
+          const atPartnerFacility = e.clinicId === partnerClinicEntityId;
+          const atMyFacilityWithPartnerTeam =
+            e.clinicId === myClinicEntityId &&
+            executorMatchesPartnerRoot(
+              e.veterinarianId,
+              clinicPartnerContextProfileId,
+              veterinarians,
+              guestVets,
+              extraVets,
+              partnerContextTeamForList,
+            );
+          if (!atPartnerFacility && !atMyFacilityWithPartnerTeam) return false;
         } else {
           if (e.clinicId !== myClinicEntityId) return false;
           if (
