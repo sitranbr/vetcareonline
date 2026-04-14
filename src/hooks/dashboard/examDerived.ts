@@ -13,13 +13,13 @@ export function deriveFilteredExamsForList(params: {
   examListDateTo: string;
   isRootClinicSubscriber: boolean;
   clinicPartnerContextProfileId: string | null;
-  /** Perfil do item selecionado no dropdown (quando há parceiro). */
-  partnerContextOptions: { profileId: string; name: string; role?: string }[];
   clinics: { id: string; profileId?: string | null }[];
   guestClinics: { id: string; profileId: string }[];
   extraClinics: { id: string; profileId: string }[];
   myClinicEntityId: string | null;
   partnerContextTeamForList: Set<string> | null;
+  /** IDs de veterinários (entidade) vinculados a perfis em `user.partners` (reforço ao filtro de parceiro clínica). */
+  partnerLinkedVetEntityIds: Set<string>;
   veterinarians: Veterinarian[];
   guestVets: PartnerVetRow[];
   extraVets: PartnerVetRow[];
@@ -32,12 +32,12 @@ export function deriveFilteredExamsForList(params: {
     examListDateTo,
     isRootClinicSubscriber,
     clinicPartnerContextProfileId,
-    partnerContextOptions,
     clinics,
     guestClinics,
     extraClinics,
     myClinicEntityId,
     partnerContextTeamForList,
+    partnerLinkedVetEntityIds,
     veterinarians,
     guestVets,
     extraVets,
@@ -64,27 +64,29 @@ export function deriveFilteredExamsForList(params: {
         // convidados de outra clínica (ex.: Lineu/Maricota atendendo na Univet).
         if (e.clinicId !== myClinicEntityId) return false;
       } else {
-        const opt = partnerContextOptions.find((o) => o.profileId === clinicPartnerContextProfileId);
-        const isPartnerClinic = String(opt?.role ?? '').toLowerCase() === 'clinic';
-        if (isPartnerClinic) {
-          const partnerClinicEntityId = resolveClinicEntityIdForPartnerProfile(
-            clinicPartnerContextProfileId,
-            clinics,
-            guestClinics,
-            extraClinics,
-          );
-          if (!partnerClinicEntityId || !myClinicEntityId) return false;
+        const partnerClinicEntityId = resolveClinicEntityIdForPartnerProfile(
+          clinicPartnerContextProfileId,
+          clinics,
+          guestClinics,
+          extraClinics,
+        );
+        const isPartnerClinicOrg = partnerClinicEntityId !== null;
+        if (isPartnerClinicOrg) {
+          if (!myClinicEntityId) return false;
+          const vid = (e.veterinarianId ?? '').toString().trim();
           const atPartnerFacility = e.clinicId === partnerClinicEntityId;
-          const atMyFacilityWithPartnerTeam =
-            e.clinicId === myClinicEntityId &&
-            executorMatchesPartnerRoot(
+          const executorLinkedToPartner =
+            vid &&
+            (executorMatchesPartnerRoot(
               e.veterinarianId,
               clinicPartnerContextProfileId,
               veterinarians,
               guestVets,
               extraVets,
               partnerContextTeamForList,
-            );
+            ) ||
+              partnerLinkedVetEntityIds.has(vid));
+          const atMyFacilityWithPartnerTeam = e.clinicId === myClinicEntityId && executorLinkedToPartner;
           if (!atPartnerFacility && !atMyFacilityWithPartnerTeam) return false;
         } else {
           if (e.clinicId !== myClinicEntityId) return false;

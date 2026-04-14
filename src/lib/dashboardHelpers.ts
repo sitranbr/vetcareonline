@@ -138,8 +138,11 @@ export const executorMatchesPartnerRoot = (
     buildPartnerContextTeamVetEntityIds(partnerRootProfileId, veterinarians, guestVets, extraVets);
   if (team.has(vid)) return true;
   const pools = [...veterinarians, ...guestVets, ...extraVets];
-  const row = pools.find((x) => x.id === vid);
+  const row =
+    pools.find((x) => x.id === vid) ??
+    pools.find((x) => String(x.profileId ?? '').trim() === vid);
   if (!row) return false;
+  if (team.has(row.id)) return true;
   const pid = String(row.profileId ?? '').trim();
   const oid = String(row.ownerId ?? '').trim();
   return pid === root || oid === root;
