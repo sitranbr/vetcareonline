@@ -2,7 +2,7 @@
 
 Este documento descreve a arquitetura técnica do modelo **Software as a Service (SaaS)** implementado no Petcare, focando no isolamento de dados (Multi-tenancy) e na lógica de compartilhamento entre parceiros.
 
-**Última atualização:** Fevereiro 2025
+**Última atualização:** Abril 2026
 
 ---
 
@@ -132,10 +132,11 @@ O sistema adapta a interface e os documentos gerados com base no contexto do usu
 
 ### Carregamento de Configurações (`SettingsContext`)
 
-1.  **Identificação do Tenant:**
-    *   Para usuários normais: busca configurações da tabela correspondente (`veterinarians` ou `clinics`) usando `profile_id`.
-    *   Para usuários convidados (`owner_id` diferente de `id`): busca as configurações do criador (owner).
-    *   Determina a tabela correta baseado no `role` do perfil do criador.
+1.  **Identificação do Tenant (Branding efetivo):**
+    *   Para **assinante raiz** (sem `owner_id` ou `owner_id = id`): busca configurações da tabela correspondente (`veterinarians` ou `clinics`) usando `profile_id = user.id`.
+    *   Para **equipe interna / recepção** (`role = reception` ou `level = 5` com `owner_id`): **herda branding do owner** (assinante).
+    *   Para **parceiro convidado** (vet/clínica com `owner_id` apontando para o assinante): **herda branding do owner**.
+    *   Quando herda branding: determina a **tabela alvo** (`veterinarians` vs `clinics`) lendo o `role` do perfil do criador (owner) antes de buscar o registro de branding.
 
 2.  **Dados Carregados:**
     *   Nome da empresa/profissional
@@ -210,6 +211,17 @@ O sistema permite que usuários com múltiplos vínculos alternem entre diferent
     *   Permite alternar entre diferentes tenants disponíveis.
     *   Atualiza o contexto de trabalho e recarrega configurações relacionadas.
 
+### Contexto de Parceiro (assinante Clínica)
+
+Além do tenant principal, existe um **modo de contexto de parceiro** usado no Dashboard quando o usuário é **assinante do tipo clínica** (conta raiz) e precisa **visualizar um subconjunto de dados “em nome” de um parceiro** vinculado via `profiles.partners`.
+
+- **Seletor de contexto (root profile)**: um UUID (perfil raiz do parceiro) define o “recorte” de visualização.
+- **Fechamento transitivo de equipe do parceiro**: para localizar exames do parceiro de forma consistente, o sistema calcula o conjunto de veterinários pertencentes à árvore do parceiro (profileId = raiz, ownerId = raiz e subordinados cujo owner aponta para membros já incluídos).
+- **Filtro de exames com clínica parceira convidada**: quando a clínica local (onde o exame foi realizado) é uma **clínica parceira convidada**, o filtro considera:
+  - **local do exame** = a clínica logada (unidade/parceira)
+  - **executor** = veterinários pertencentes ao tenant/árvore do assinante/parceiro selecionado
+  - Isso evita o erro clássico de filtrar por `clinic_id = clinic do assinante` quando os exames estão registrados na **unidade parceira**.
+
 ---
 
 ## 7. Detalhes Técnicos de Implementação
@@ -248,7 +260,7 @@ O sistema permite que usuários com múltiplos vínculos alternem entre diferent
 
 ### Migrações Recentes
 
-As migrações mais recentes (Fevereiro 2025) focaram em:
+As migrações mais recentes (Fevereiro 2025 → Abril 2026) focaram em:
 - Garantir existência da coluna `partners` com valor padrão `'{}'`
 - Corrigir políticas RLS de visibilidade de parceiros
 - Implementar validações de duplicidade no vínculo
@@ -256,6 +268,9 @@ As migrações mais recentes (Fevereiro 2025) focaram em:
 - Corrigir conflitos de tipagem (UUID vs Text)
 - Adicionar campos adicionais aos exames (species, requester_vet, requester_crmv)
 - Implementar índice de performance para consultas frequentes
+- Refinar **filtros de exames de parceiros** (incluindo cenários com clínica parceira convidada e fechamento transitivo de equipe)
+- Ajustar **exibição de valores** no resumo operacional e relatórios conforme permissões (`view_financials` e subníveis)
+- Padronizar o **filtro da tabela de preços** por escopo (vet|id / clinic|id), evitando incluir regras genéricas (“todos”) quando o usuário filtra um parceiro específico
 
 ---
 

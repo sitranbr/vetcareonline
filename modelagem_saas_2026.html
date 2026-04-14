@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Petcare — Arquitetura SaaS (Abr/2026)</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,wght@0,300;0,600;1,300&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d1117; --surface: #161b22; --border: #21262d;
+      --accent: #3fb950; --accent2: #58a6ff; --accent3: #f78166;
+      --accent4: #d2a8ff; --accent5: #ffa657; --partner: #39d0d8; --price: #e8c84a;
+      --text: #e6edf3; --muted: #7d8590; --card: #1c2128;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; min-height: 100vh; padding: 2rem; }
+    header { text-align: center; margin-bottom: 2.2rem; }
+    header h1 { font-family: 'Fraunces', serif; font-weight: 600; font-size: 2.2rem; letter-spacing: -0.02em; }
+    header h1 span { color: var(--accent); }
+    header p { color: var(--muted); font-size: 0.8rem; margin-top: 0.4rem; letter-spacing: 0.08em; text-transform: uppercase; }
+
+    .tabs { display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 2.2rem; flex-wrap: wrap; }
+    .tab-btn { background: var(--surface); border: 1px solid var(--border); color: var(--muted); font-family: 'DM Mono', monospace; font-size: 0.72rem; padding: 0.5rem 1.1rem; cursor: pointer; letter-spacing: 0.05em; text-transform: uppercase; transition: all 0.2s; }
+    .tab-btn:hover { color: var(--text); border-color: var(--muted); }
+    .tab-btn.active { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+    .tab-btn.ptab.active { background: var(--partner); border-color: var(--partner); }
+    .tab-btn.price-tab.active { background: var(--price); border-color: var(--price); color: var(--bg); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .er-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.2rem; max-width: 1200px; margin: 0 auto; }
+    .entity { background: var(--card); border: 1px solid var(--border); overflow: hidden; animation: fadeUp 0.4s ease both; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    .entity-header { padding: 0.65rem 1rem; font-size: 0.72rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; display: flex; align-items: center; gap: 0.5rem; }
+    .entity-header .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .entity-body { padding: 0.75rem 1rem 1rem; }
+    .field { display: flex; justify-content: space-between; align-items: center; padding: 0.28rem 0; border-bottom: 1px solid var(--border); font-size: 0.73rem; gap: 0.75rem; }
+    .field:last-child { border-bottom: none; }
+    .field-name { color: var(--text); }
+    .field-name.pk { color: var(--accent5); font-weight: 500; }
+    .field-name.fk { color: var(--accent2); }
+    .field-type { color: var(--muted); font-size: 0.67rem; text-align: right; }
+    .badge { font-size: 0.58rem; padding: 0.1rem 0.4rem; border-radius: 2px; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; margin-left: 0.3rem; }
+    .badge-pk { background: rgba(255,166,87,0.15); color: var(--accent5); }
+    .badge-fk { background: rgba(88,166,255,0.12); color: var(--accent2); }
+    .badge-uk { background: rgba(63,185,80,0.12); color: var(--accent); }
+
+    .color-auth   { background: rgba(88,166,255,0.08); }
+    .color-prof   { background: rgba(63,185,80,0.08); }
+    .color-tenant { background: rgba(57,208,216,0.08); }
+    .color-exam   { background: rgba(210,168,255,0.08); }
+    .color-price  { background: rgba(232,200,74,0.08); }
+
+    .relations-section { max-width: 960px; margin: 0 auto; }
+    .rel-group { margin-bottom: 2rem; }
+    .rel-group h3 { font-family: 'Fraunces', serif; font-size: 1rem; font-weight: 300; font-style: italic; color: var(--muted); margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+    .rel-row { display: flex; align-items: center; gap: 1rem; padding: 0.7rem 1rem; background: var(--card); border: 1px solid var(--border); margin-bottom: 0.5rem; font-size: 0.75rem; animation: fadeUp 0.3s ease both; flex-wrap: wrap; }
+    .rel-entity { padding: 0.25rem 0.7rem; font-weight: 500; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .rel-arrow { color: var(--muted); flex: 1; text-align: center; min-width: 80px; }
+    .rel-label { color: var(--muted); font-size: 0.68rem; margin-left: auto; text-align: right; min-width: 180px; }
+
+    .sql-section { max-width: 960px; margin: 0 auto; }
+    .sql-block { background: var(--card); border: 1px solid var(--border); margin-bottom: 1.2rem; overflow: hidden; animation: fadeUp 0.4s ease both; }
+    .sql-header { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 1rem; border-bottom: 1px solid var(--border); cursor: pointer; }
+    .sql-header span { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; }
+    .sql-header .chevron { color: var(--muted); transition: transform 0.2s; }
+    .sql-header.open .chevron { transform: rotate(90deg); }
+    .sql-code { padding: 1rem 1.2rem; font-size: 0.72rem; line-height: 1.8; display: none; overflow-x: auto; color: var(--muted); }
+    .sql-code.visible { display: block; }
+    .kw { color: var(--accent2); } .ty { color: var(--accent5); } .cm { color: var(--muted); font-style: italic; } .st { color: var(--accent); } .cn { color: var(--accent3); }
+
+    .roles-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; max-width: 960px; margin: 0 auto; }
+    .role-card { background: var(--card); border: 1px solid var(--border); padding: 1.2rem; animation: fadeUp 0.4s ease both; }
+    .role-title { font-size: 0.75rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.8rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+    .perm-list { list-style: none; }
+    .perm-list li { font-size: 0.7rem; color: var(--muted); padding: 0.2rem 0; display: flex; gap: 0.5rem; align-items: flex-start; }
+    .perm-list li::before { content: '▸'; color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+    .perm-allow { color: var(--accent) !important; }
+    .perm-deny { color: var(--accent3) !important; }
+    .perm-partner { color: var(--partner) !important; }
+    .perm-note { color: var(--accent5) !important; }
+
+    .partner-section { max-width: 960px; margin: 0 auto; }
+    .partner-intro { background: rgba(57,208,216,0.06); border: 1px solid rgba(57,208,216,0.3); padding: 1.2rem 1.5rem; margin-bottom: 2rem; font-size: 0.75rem; line-height: 1.8; color: var(--muted); }
+    .partner-intro strong { color: var(--partner); }
+    .concept-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+    .concept-card { background: var(--card); border: 1px solid var(--border); padding: 1.1rem; }
+    .concept-card h4 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.6rem; color: var(--partner); }
+    .concept-card p { font-size: 0.7rem; color: var(--muted); line-height: 1.6; }
+    .concept-card ul { list-style: none; margin-top: 0.5rem; }
+    .concept-card ul li { font-size: 0.7rem; color: var(--muted); padding: 0.15rem 0; display: flex; gap: 0.4rem; }
+    .concept-card ul li::before { content: '→'; color: var(--partner); }
+
+    .matrix-table { width: 100%; border-collapse: collapse; font-size: 0.7rem; margin-bottom: 2rem; }
+    .matrix-table th { padding: 0.5rem 0.8rem; background: var(--surface); border: 1px solid var(--border); text-align: left; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.65rem; }
+    .matrix-table td { padding: 0.5rem 0.8rem; border: 1px solid var(--border); background: var(--card); vertical-align: top; }
+    .matrix-table tr:hover td { background: rgba(57,208,216,0.04); }
+    .check { color: var(--accent); } .cross { color: var(--accent3); } .cond { color: var(--accent5); }
+    .section-title { font-family: 'Fraunces', serif; font-weight: 300; font-style: italic; font-size: 1rem; color: var(--muted); margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); }
+
+    .flow-section { max-width: 720px; margin: 0 auto; }
+    .flow-step { display: flex; gap: 1.2rem; animation: fadeUp 0.4s ease both; }
+    .flow-left { display: flex; flex-direction: column; align-items: center; width: 36px; flex-shrink: 0; }
+    .step-num { width: 36px; height: 36px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 500; background: var(--card); }
+    .step-line { width: 1px; flex: 1; min-height: 24px; background: var(--border); margin: 4px 0; }
+    .flow-content { padding: 0.1rem 0 1.5rem; }
+    .flow-content h4 { font-size: 0.75rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 0.3rem; }
+    .flow-content p { font-size: 0.7rem; color: var(--muted); line-height: 1.6; }
+    .flow-actors { display: flex; gap: 0.4rem; margin-top: 0.4rem; flex-wrap: wrap; }
+    .actor-tag { font-size: 0.62rem; padding: 0.15rem 0.5rem; border: 1px solid; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    footer { text-align: center; margin-top: 3rem; color: var(--muted); font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase; }
+    code { color: var(--text); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Petcare <span>SaaS</span></h1>
+  <p>Multi-tenancy + parcerias + white label · Última atualização: Abr/2026</p>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="showTab('overview',this)">Visão Geral</button>
+  <button class="tab-btn" onclick="showTab('er',this)">Entidades</button>
+  <button class="tab-btn" onclick="showTab('relations',this)">Relacionamentos</button>
+  <button class="tab-btn" onclick="showTab('security',this)">Segurança (RLS/RPC)</button>
+  <button class="tab-btn" onclick="showTab('roles',this)">Papéis & Permissões</button>
+  <button class="tab-btn ptab" onclick="showTab('partners',this)">🤝 Parceiros</button>
+  <button class="tab-btn price-tab" onclick="showTab('pricing',this)">💰 Preços</button>
+  <button class="tab-btn" onclick="showTab('flows',this)">Fluxos</button>
+</div>
+
+<!-- ===== OVERVIEW ===== -->
+<div id="tab-overview" class="tab-panel active">
+  <div class="partner-section">
+    <div class="partner-intro">
+      <strong>Objetivo:</strong> separar <strong>identidade</strong> (login) do <strong>contexto de trabalho</strong> (tenant), mantendo isolamento por RLS e permitindo
+      compartilhamento explícito via parcerias. Este documento é um “mapa mental” único do modelo descrito em <code>sass.md</code> (Abr/2026).
+      <br><br>
+      <strong>Princípios:</strong>
+      <br>1) identidade global em <code>auth.users</code>
+      <br>2) perfil e regras em <code>public.profiles</code> (role, level, owner_id, permissions, partners[])
+      <br>3) dados de negócio em tenants (<code>veterinarians</code> / <code>clinics</code>)
+      <br>4) parcerias via <code>profiles.partners</code> (vínculo mútuo)
+      <br>5) herança via <code>profiles.owner_id</code> (equipe/guest herda do assinante)
+    </div>
+
+    <p class="section-title">Mapa rápido de usuários</p>
+    <table class="matrix-table">
+      <thead>
+        <tr><th>Tipo</th><th>Como identificar</th><th>“Operando em nome de”</th><th>Branding (White Label)</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="color:var(--accent)">Assinante raiz</td>
+          <td><code>owner_id</code> vazio ou <code>owner_id = id</code></td>
+          <td>Ele mesmo</td>
+          <td class="check">✓ do próprio tenant</td>
+        </tr>
+        <tr>
+          <td style="color:var(--accent5)">Equipe / recepção</td>
+          <td><code>role=reception</code> ou <code>level=5</code> e <code>owner_id</code> preenchido</td>
+          <td><code>owner_id</code></td>
+          <td class="cond">✓ herda do owner</td>
+        </tr>
+        <tr>
+          <td style="color:var(--partner)">Parceiro vinculado</td>
+          <td><code>id</code> em <code>profiles.partners[]</code></td>
+          <td>Ele mesmo (mas com visibilidade limitada)</td>
+          <td class="cond">depende do tenant ativo</td>
+        </tr>
+        <tr>
+          <td style="color:var(--partner)">Parceiro convidado (guest)</td>
+          <td><code>owner_id</code> diferente do <code>id</code> (vet/clínica) + contexto de parceria</td>
+          <td><code>owner_id</code></td>
+          <td class="cond">✓ herda do owner</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ===== ER ===== -->
+<div id="tab-er" class="tab-panel">
+  <div class="er-grid">
+    <div class="entity" style="animation-delay:0s">
+      <div class="entity-header color-auth"><div class="dot" style="background:var(--accent2)"></div>auth.users</div>
+      <div class="entity-body">
+        <div class="field"><span class="field-name pk">id <span class="badge badge-pk">PK</span></span><span class="field-type">UUID (auth.uid)</span></div>
+        <div class="field"><span class="field-name">email <span class="badge badge-uk">UK</span></span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">user_metadata</span><span class="field-type">JSON</span></div>
+      </div>
+    </div>
+
+    <div class="entity" style="animation-delay:0.06s">
+      <div class="entity-header color-prof"><div class="dot" style="background:var(--accent)"></div>public.profiles</div>
+      <div class="entity-body">
+        <div class="field"><span class="field-name pk">id <span class="badge badge-pk">PK</span></span><span class="field-type">UUID (FK auth.users)</span></div>
+        <div class="field"><span class="field-name">email</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">name</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">role</span><span class="field-type">admin | vet | clinic | reception</span></div>
+        <div class="field"><span class="field-name">level</span><span class="field-type">1–5</span></div>
+        <div class="field"><span class="field-name fk">owner_id <span class="badge badge-fk">FK</span></span><span class="field-type">UUID nullable (herança)</span></div>
+        <div class="field"><span class="field-name">permissions</span><span class="field-type">JSONB</span></div>
+        <div class="field"><span class="field-name">partners[]</span><span class="field-type">TEXT[] (UUID como texto)</span></div>
+      </div>
+    </div>
+
+    <div class="entity" style="animation-delay:0.12s">
+      <div class="entity-header color-tenant"><div class="dot" style="background:var(--partner)"></div>veterinarians</div>
+      <div class="entity-body">
+        <div class="field"><span class="field-name pk">id <span class="badge badge-pk">PK</span></span><span class="field-type">UUID</span></div>
+        <div class="field"><span class="field-name fk">profile_id <span class="badge badge-fk">FK</span></span><span class="field-type">UUID → profiles.id</span></div>
+        <div class="field"><span class="field-name">name / email</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">crmv / document</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">logo_url</span><span class="field-type">TEXT</span></div>
+      </div>
+    </div>
+
+    <div class="entity" style="animation-delay:0.18s">
+      <div class="entity-header color-tenant"><div class="dot" style="background:var(--partner)"></div>clinics</div>
+      <div class="entity-body">
+        <div class="field"><span class="field-name pk">id <span class="badge badge-pk">PK</span></span><span class="field-type">UUID</span></div>
+        <div class="field"><span class="field-name fk">profile_id <span class="badge badge-fk">FK</span></span><span class="field-type">UUID → profiles.id</span></div>
+        <div class="field"><span class="field-name">name / email</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">document</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">responsible_name</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">logo_url</span><span class="field-type">TEXT</span></div>
+      </div>
+    </div>
+
+    <div class="entity" style="animation-delay:0.24s">
+      <div class="entity-header color-exam"><div class="dot" style="background:var(--accent4)"></div>exams</div>
+      <div class="entity-body">
+        <div class="field"><span class="field-name pk">id <span class="badge badge-pk">PK</span></span><span class="field-type">UUID</span></div>
+        <div class="field"><span class="field-name">date</span><span class="field-type">DATE</span></div>
+        <div class="field"><span class="field-name">pet_name / species</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">requester_vet / requester_crmv</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name fk">veterinarian_id <span class="badge badge-fk">FK</span></span><span class="field-type">UUID (executor)</span></div>
+        <div class="field"><span class="field-name fk">clinic_id <span class="badge badge-fk">FK</span></span><span class="field-type">UUID (local)</span></div>
+        <div class="field"><span class="field-name">machine_owner</span><span class="field-type">professional | clinic</span></div>
+        <div class="field"><span class="field-name">values (total/repasse)</span><span class="field-type">NUMERIC</span></div>
+        <div class="field"><span class="field-name">status</span><span class="field-type">pending | partial | completed</span></div>
+      </div>
+    </div>
+
+    <div class="entity" style="animation-delay:0.30s">
+      <div class="entity-header color-price"><div class="dot" style="background:var(--price)"></div>price_rules</div>
+      <div class="entity-body">
+        <div class="field"><span class="field-name pk">id <span class="badge badge-pk">PK</span></span><span class="field-type">UUID</span></div>
+        <div class="field"><span class="field-name fk">clinic_id <span class="badge badge-fk">FK</span></span><span class="field-type">UUID (ou “todas”)</span></div>
+        <div class="field"><span class="field-name fk">veterinarian_id <span class="badge badge-fk">FK</span></span><span class="field-type">UUID (ou “todos”)</span></div>
+        <div class="field"><span class="field-name">modality</span><span class="field-type">USG | RX | ...</span></div>
+        <div class="field"><span class="field-name">period</span><span class="field-type">comercial | noturno | fds | feriado | all</span></div>
+        <div class="field"><span class="field-name">valor / repasses</span><span class="field-type">NUMERIC</span></div>
+        <div class="field"><span class="field-name">taxa_extra / observacoes</span><span class="field-type">NUMERIC? / TEXT</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== RELATIONS ===== -->
+<div id="tab-relations" class="tab-panel">
+  <div class="relations-section">
+    <div class="rel-group">
+      <h3>Identidade, Perfil e Tenant</h3>
+      <div class="rel-row">
+        <span class="rel-entity" style="background:rgba(88,166,255,0.15);color:var(--accent2)">auth.users</span>
+        <span class="rel-arrow">→</span>
+        <span class="rel-entity" style="background:rgba(63,185,80,0.15);color:var(--accent)">profiles</span>
+        <span class="rel-label">profiles.id = auth.uid()</span>
+      </div>
+      <div class="rel-row">
+        <span class="rel-entity" style="background:rgba(63,185,80,0.15);color:var(--accent)">profiles</span>
+        <span class="rel-arrow">→</span>
+        <span class="rel-entity" style="background:rgba(57,208,216,0.15);color:var(--partner)">veterinarians</span>
+        <span class="rel-label">veterinarians.profile_id</span>
+      </div>
+      <div class="rel-row">
+        <span class="rel-entity" style="background:rgba(63,185,80,0.15);color:var(--accent)">profiles</span>
+        <span class="rel-arrow">→</span>
+        <span class="rel-entity" style="background:rgba(57,208,216,0.15);color:var(--partner)">clinics</span>
+        <span class="rel-label">clinics.profile_id</span>
+      </div>
+    </div>
+
+    <div class="rel-group">
+      <h3>Equipe / Guest / Herança</h3>
+      <div class="rel-row">
+        <span class="rel-entity" style="background:rgba(63,185,80,0.15);color:var(--accent)">profiles</span>
+        <span class="rel-arrow">→</span>
+        <span class="rel-entity" style="background:rgba(63,185,80,0.15);color:var(--accent)">profiles</span>
+        <span class="rel-label">owner_id aponta p/ perfil do assinante</span>
+      </div>
+    </div>
+
+    <div class="rel-group">
+      <h3>Parcerias (vínculo mútuo)</h3>
+      <div class="rel-row">
+        <span class="rel-entity" style="background:rgba(63,185,80,0.15);color:var(--accent)">profiles</span>
+        <span class="rel-arrow">↔</span>
+        <span class="rel-entity" style="background:rgba(63,185,80,0.15);color:var(--accent)">profiles</span>
+        <span class="rel-label">partners[] contém IDs (texto) em ambos os lados</span>
+      </div>
+    </div>
+
+    <div class="rel-group">
+      <h3>Exames, contexto e white label</h3>
+      <div class="rel-row">
+        <span class="rel-entity" style="background:rgba(210,168,255,0.15);color:var(--accent4)">exams</span>
+        <span class="rel-arrow">→</span>
+        <span class="rel-entity" style="background:rgba(57,208,216,0.15);color:var(--partner)">clinics</span>
+        <span class="rel-label">clinic_id = local</span>
+      </div>
+      <div class="rel-row">
+        <span class="rel-entity" style="background:rgba(210,168,255,0.15);color:var(--accent4)">exams</span>
+        <span class="rel-arrow">→</span>
+        <span class="rel-entity" style="background:rgba(57,208,216,0.15);color:var(--partner)">veterinarians</span>
+        <span class="rel-label">veterinarian_id = executor</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SECURITY ===== -->
+<div id="tab-security" class="tab-panel">
+  <div class="sql-section">
+    <div class="partner-intro" style="max-width:960px;margin:0 auto 1.2rem">
+      <strong>Isolamento:</strong> RLS no Supabase/Postgres define quem vê/edita cada linha. Operações críticas usam RPC <strong>SECURITY DEFINER</strong> com
+      <strong>search_path</strong> protegido para evitar injeção e loops em políticas.
+    </div>
+
+    <div class="sql-block">
+      <div class="sql-header open" onclick="toggleSql(this)"><span>Policies (visão)</span><span class="chevron">▶</span></div>
+      <pre class="sql-code visible"><span class="cm">-- Visualização de exames (conceito)</span>
+<span class="kw">ALLOW SELECT</span> on exams <span class="kw">IF</span>
+  veterinarian_id = <span class="kw">auth.uid()</span>
+  <span class="kw">OR</span> clinic_id = <span class="kw">auth.uid()</span>
+  <span class="kw">OR</span> sou equipe (owner_id)
+  <span class="kw">OR</span> sou parceiro (profiles.partners)
+
+<span class="cm">-- Visualização de perfis de parceiros</span>
+<span class="kw">ALLOW SELECT</span> on profiles <span class="kw">IF</span>
+  id = <span class="kw">auth.uid()</span>
+  <span class="kw">OR</span> partners @&gt; ARRAY[auth.uid()::text]</pre>
+    </div>
+
+    <div class="sql-block">
+      <div class="sql-header" onclick="toggleSql(this)"><span>RPCs (SECURITY DEFINER)</span><span class="chevron">▶</span></div>
+      <pre class="sql-code"><span class="cm">-- link_partner_by_email(target_email, requester_id, requester_type)</span>
+<span class="cm">-- Valida: existe? não auto-vincula? não duplica?</span>
+<span class="cm">-- Aplica vínculo mútuo em profiles.partners[]</span>
+
+<span class="cm">-- get_safe_my_level()</span>
+<span class="cm">-- Retorna nível sem recursão em RLS</span>
+
+<span class="cm">-- delete_user_completely(target_user_id)</span>
+<span class="cm">-- Remove usuário e dados relacionados (cascata controlada)</span>
+
+<span class="cm">-- update_my_email_bypass(new_email)</span>
+<span class="cm">-- Atualiza e-mail bypassando travas de RLS</span></pre>
+    </div>
+
+    <div class="sql-block">
+      <div class="sql-header" onclick="toggleSql(this)"><span>Blindagem e boas práticas</span><span class="chevron">▶</span></div>
+      <pre class="sql-code"><span class="cm">-- Todas as funções críticas devem:</span>
+<span class="kw">SET</span> search_path = public, auth;
+<span class="cm">-- Validar tipos (UUID vs TEXT)</span>
+<span class="cm">-- Retornar mensagens claras</span></pre>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ROLES ===== -->
+<div id="tab-roles" class="tab-panel">
+  <div class="roles-grid">
+    <div class="role-card" style="animation-delay:0s;border-top:2px solid var(--accent2)">
+      <div class="role-title" style="color:var(--accent2)">🌐 Admin (Nível 1)</div>
+      <ul class="perm-list">
+        <li class="perm-allow">Acesso total</li>
+        <li class="perm-allow">view_financials · manage_prices · edit_reports · export_reports</li>
+        <li class="perm-allow">delete_exams · manage_users · manage_settings</li>
+        <li class="perm-allow">bypass_report_password · bypass_delete_password</li>
+      </ul>
+    </div>
+
+    <div class="role-card" style="animation-delay:0.07s;border-top:2px solid var(--partner)">
+      <div class="role-title" style="color:var(--partner)">🩺 Veterinário (Nível 3)</div>
+      <ul class="perm-list">
+        <li class="perm-allow">edit_reports · export_reports</li>
+        <li class="perm-allow">view_financials</li>
+        <li class="perm-allow">delete_exams</li>
+        <li class="perm-allow">manage_users</li>
+        <li class="perm-deny">manage_prices</li>
+        <li class="perm-deny">manage_settings</li>
+      </ul>
+    </div>
+
+    <div class="role-card" style="animation-delay:0.14s;border-top:2px solid var(--accent)">
+      <div class="role-title" style="color:var(--accent)">🏥 Clínica (Nível 4)</div>
+      <ul class="perm-list">
+        <li class="perm-allow">manage_prices · export_reports</li>
+        <li class="perm-allow">view_financials</li>
+        <li class="perm-allow">delete_exams</li>
+        <li class="perm-allow">manage_users</li>
+        <li class="perm-deny">edit_reports</li>
+        <li class="perm-deny">manage_settings</li>
+      </ul>
+    </div>
+
+    <div class="role-card" style="animation-delay:0.21s;border-top:2px solid var(--accent5)">
+      <div class="role-title" style="color:var(--accent5)">📋 Recepção/Equipe (Nível 5)</div>
+      <ul class="perm-list">
+        <li class="perm-allow">Visualização e exportação básica</li>
+        <li class="perm-note">criar_exame (subnível/flag)</li>
+        <li class="perm-deny">manage_users · manage_settings</li>
+        <li class="perm-deny">manage_prices · edit_reports (por padrão)</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PARTNERS ===== -->
+<div id="tab-partners" class="tab-panel">
+  <div class="partner-section">
+    <div class="partner-intro">
+      <strong>Smart Linking:</strong> evita duplicidade de cadastro. Ao invés de “Clínica A criar Dr. João” e “Clínica B criar Dr. João” (dois logins),
+      o sistema cria um vínculo entre perfis existentes via <code>profiles.partners</code>.
+    </div>
+
+    <p class="section-title">Fluxo de vínculo (email → parceria)</p>
+    <div class="flow-section" style="max-width:860px">
+      <div class="flow-step">
+        <div class="flow-left"><div class="step-num" style="color:var(--accent2);border-color:var(--accent2)">01</div><div class="step-line"></div></div>
+        <div class="flow-content">
+          <h4>Busca prévia</h4>
+          <p>Procura o e-mail nas tabelas <code>profiles</code>, <code>veterinarians</code> e <code>clinics</code> para identificar se já existe (nome/role/id).</p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-left"><div class="step-num" style="color:var(--partner);border-color:var(--partner)">02</div><div class="step-line"></div></div>
+        <div class="flow-content">
+          <h4>RPC link_partner_by_email</h4>
+          <p>Função <strong>SECURITY DEFINER</strong> aplica o vínculo mútuo em <code>partners[]</code> após validar: existe, não auto-vínculo, sem duplicidade.</p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-left"><div class="step-num" style="color:var(--accent5);border-color:var(--accent5)">03</div><div class="step-line"></div></div>
+        <div class="flow-content">
+          <h4>Desvincular</h4>
+          <p>Remove IDs de ambos os arrays <code>partners[]</code>, mantendo consistência bidirecional.</p>
+        </div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-left"><div class="step-num" style="color:var(--accent3);border-color:var(--accent3)">04</div></div>
+        <div class="flow-content">
+          <h4>Fallback “Guest”</h4>
+          <p>Se o usuário não existe, pode-se criar um convidado com <code>owner_id</code> apontando para o criador. Esse perfil pode ser “emancipado” futuramente.</p>
+        </div>
+      </div>
+    </div>
+
+    <p class="section-title">Gestão de equipe vs parceiro</p>
+    <table class="matrix-table">
+      <thead>
+        <tr><th>Categoria</th><th>Como identificar</th><th>Principal efeito</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="color:var(--accent5)">Membro interno</td>
+          <td><code>profiles.owner_id = tenant_profile_id</code></td>
+          <td>herda branding; visibilidade definida por owner_id</td>
+        </tr>
+        <tr>
+          <td style="color:var(--partner)">Parceiro vinculado</td>
+          <td><code>profileId</code> em <code>partners[]</code></td>
+          <td>visibilidade limitada; aparece em seletores/listas</td>
+        </tr>
+        <tr>
+          <td style="color:var(--partner)">Parceiro convidado</td>
+          <td>vet/clínica com <code>owner_id</code> do assinante</td>
+          <td>opera “em nome” do assinante; importante para filtros</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ===== PRICING ===== -->
+<div id="tab-pricing" class="tab-panel">
+  <div class="partner-section">
+    <div class="partner-intro" style="border-color:rgba(232,200,74,0.4);background:rgba(232,200,74,0.05)">
+      <strong style="color:var(--price)">Tabela de preços dinâmica:</strong> regras por clínica e por parceiro, com modalidades e períodos.
+      O sistema suporta modalidades personalizadas e taxas extras.
+      <br><br>
+      <strong style="color:var(--accent5)">Nota de manutenção:</strong> ao filtrar por parceiro específico, evite incluir regras genéricas (“todos”) na listagem de preços.
+    </div>
+
+    <p class="section-title">Estrutura da regra (PriceRule)</p>
+    <div class="sql-block" style="max-width:960px;margin:0 auto">
+      <div class="sql-header open" onclick="toggleSql(this)"><span>PriceRule (shape)</span><span class="chevron">▶</span></div>
+      <pre class="sql-code visible"><span class="kw">type</span> PriceRule = {
+  id: <span class="ty">string</span>
+  clinicId: <span class="ty">string</span>         <span class="cm">// escopo (clínica)</span>
+  veterinarianId?: <span class="ty">string</span>  <span class="cm">// escopo (vet)</span>
+  modality: <span class="ty">Modality</span>
+  period: <span class="ty">Period</span> | <span class="st">'all'</span>
+  valor: <span class="ty">number</span>
+  repasseProfessional: <span class="ty">number</span>
+  repasseClinic: <span class="ty">number</span>
+  taxaExtra?: <span class="ty">number</span>
+  observacoes: <span class="ty">string</span>
+}</pre>
+    </div>
+
+    <p class="section-title">Características</p>
+    <table class="matrix-table">
+      <thead>
+        <tr><th>Capacidade</th><th>Descrição</th></tr>
+      </thead>
+      <tbody>
+        <tr><td style="color:var(--price)">Por clínica</td><td>cada clínica mantém suas regras, com períodos e modalidades</td></tr>
+        <tr><td style="color:var(--price)">Por parceiro</td><td>veterinário pode ter preços diferentes para cada clínica parceira</td></tr>
+        <tr><td style="color:var(--price)">Modalidades</td><td>USG/RX e exames customizados</td></tr>
+        <tr><td style="color:var(--price)">Taxas extras</td><td>uso de equipamento/deslocamento (por regra)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ===== FLOWS ===== -->
+<div id="tab-flows" class="tab-panel">
+  <div class="flow-section">
+    <div class="flow-step">
+      <div class="flow-left"><div class="step-num" style="color:var(--accent2);border-color:var(--accent2)">01</div><div class="step-line"></div></div>
+      <div class="flow-content">
+        <h4>Autenticação & Sessão</h4>
+        <p>Ao iniciar: verifica sessão no Supabase Auth, cria usuário temporário a partir do <code>user_metadata</code>, define tenant provisório e hidrata o profile completo em <code>profiles</code>.</p>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="flow-left"><div class="step-num" style="color:var(--partner);border-color:var(--partner)">02</div><div class="step-line"></div></div>
+      <div class="flow-content">
+        <h4>Tenant & Contexto</h4>
+        <p>Carrega tenant por <code>profile_id</code>; se faltar, tenta por e-mail e vincula. Mantém <code>currentTenant</code> e <code>availableTenants</code>. Para assinante clínica, pode haver modo “contexto de parceiro” por root profile.</p>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="flow-left"><div class="step-num" style="color:var(--accent);border-color:var(--accent)">03</div><div class="step-line"></div></div>
+      <div class="flow-content">
+        <h4>White Label (Branding efetivo)</h4>
+        <p><code>SettingsContext</code> busca branding do tenant do usuário. Se equipe/recepção ou guest, herda do owner: resolve tabela (vet vs clinic) pelo role do owner e carrega dados por <code>profile_id</code>.</p>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="flow-left"><div class="step-num" style="color:var(--accent4);border-color:var(--accent4)">04</div><div class="step-line"></div></div>
+      <div class="flow-content">
+        <h4>Exames & Laudos</h4>
+        <p>Exame contém dados do paciente, requisitante (nome/CRMV), vínculos (executor, clínica local, dono da máquina), modalidade/período e valores (total/repasses). O editor gera PDF com white label.</p>
+      </div>
+    </div>
+
+    <div class="flow-step">
+      <div class="flow-left"><div class="step-num" style="color:var(--price);border-color:var(--price)">05</div></div>
+      <div class="flow-content">
+        <h4>Preços & Repasses</h4>
+        <p>Valores são calculados com base nas regras de preço (modalidade/período/escopo) e no dono da máquina; suporta taxas extras e split automático entre profissional e clínica.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>Petcare · Arquitetura SaaS · Abr/2026</footer>
+
+<script>
+  function showTab(name, btn) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    btn.classList.add('active');
+  }
+  function toggleSql(header) {
+    header.classList.toggle('open');
+    header.nextElementSibling.classList.toggle('visible');
+  }
+</script>
+</body>
+</html>
