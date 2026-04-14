@@ -18,7 +18,7 @@ export function deriveFilteredExamsForList(params: {
   extraClinics: { id: string; profileId: string }[];
   myClinicEntityId: string | null;
   partnerContextTeamForList: Set<string> | null;
-  /** IDs de veterinários (entidade) vinculados a perfis em `user.partners` (reforço ao filtro de parceiro clínica). */
+  /** IDs de veterinários vinculados ao parceiro selecionado no dropdown (um perfil), não a toda a lista `partners`. */
   partnerLinkedVetEntityIds: Set<string>;
   veterinarians: Veterinarian[];
   guestVets: PartnerVetRow[];

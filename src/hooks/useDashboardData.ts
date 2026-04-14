@@ -297,8 +297,21 @@ export function useDashboardData() {
   );
 
   /**
+   * Vets cujo owner/profile bate apenas com o parceiro do dropdown (não com todos os `user.partners`).
+   * Evita misturar exames de outros parceiros (ex.: Piquet) ao filtrar por Maricota.
+   */
+  const partnerLinkedVetEntityIdsForSelectedPartner = useMemo(
+    () =>
+      buildPartnerLinkedVetEntityIds(
+        clinicPartnerContextProfileId ? [clinicPartnerContextProfileId] : null,
+        veterinarians,
+        extraVets,
+      ),
+    [clinicPartnerContextProfileId, veterinarians, extraVets],
+  );
+
+  /**
    * Executores considerados equipe interna do assinante (nÃ£o veterinÃ¡rios carregados como `extraVets` de parceiros).
-   * "Minha clÃ­nica (Geral)" sÃ³ lista exames com executor neste conjunto (ou sem executor).
    */
   const subscriberInternalVetEntityIds = useMemo(
     () =>
@@ -953,7 +966,7 @@ export function useDashboardData() {
         extraClinics,
         myClinicEntityId,
         partnerContextTeamForList,
-        partnerLinkedVetEntityIds,
+        partnerLinkedVetEntityIdsForSelectedPartner,
         veterinarians,
         guestVets,
         extraVets,
@@ -971,7 +984,7 @@ export function useDashboardData() {
       extraClinics,
       myClinicEntityId,
       partnerContextTeamForList,
-      partnerLinkedVetEntityIds,
+      partnerLinkedVetEntityIdsForSelectedPartner,
       veterinarians,
       guestVets,
       extraVets,
