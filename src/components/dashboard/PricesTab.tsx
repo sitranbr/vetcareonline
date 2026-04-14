@@ -15,7 +15,7 @@ import {
   AlertCircle,
   CreditCard,
 } from 'lucide-react';
-import { getModalityLabel, getPeriodLabel } from '../../utils/calculations';
+import { formatMoney, getModalityLabel, getPeriodLabel } from '../../utils/calculations';
 import type { Modality } from '../../types';
 import { supabase } from '../../lib/supabase';
 import type { DashboardData } from '../../hooks/useDashboardData';

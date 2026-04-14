@@ -10,6 +10,7 @@ import {
   Save,
   Loader2,
 } from 'lucide-react';
+import { formatMoney } from '../../utils/calculations';
 import { canManageTeamAccess } from '../../lib/teamPermissions';
 import type { Modality, Period, MachineOwner } from '../../types';
 import type { ExamItem } from '../../types';
