@@ -101,32 +101,32 @@ export function ExamFormTab(props: DashboardData) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Data do Exame</label>
-                  <input type="date" required value={props.formData.date} onChange={e => props.setFormData({...formData, date: e.target.value})} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT" />
+                  <input type="date" required value={props.formData.date} onChange={e => props.setFormData({...props.formData, date: e.target.value})} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT" />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Paciente (PET)</label>
-                  <input type="text" required value={props.formData.petName} onChange={e => props.setFormData({...formData, petName: e.target.value})} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT" placeholder="Nome do animal" />
+                  <input type="text" required value={props.formData.petName} onChange={e => props.setFormData({...props.formData, petName: e.target.value})} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT" placeholder="Nome do animal" />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Espécie</label>
-                  <select value={props.formData.species} onChange={e => props.setFormData({...formData, species: e.target.value})} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT">
+                  <select value={props.formData.species} onChange={e => props.setFormData({...props.formData, species: e.target.value})} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT">
                     {props.SPECIES_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                   </select>
                   {props.formData.species === 'Outros' && (
-                    <input type="text" placeholder="Qual espécie?" value={props.formData.customSpecies} onChange={e => props.setFormData({...formData, customSpecies: e.target.value})} className="mt-2 w-full px-3 py-2 border rounded-lg text-sm" />
+                    <input type="text" placeholder="Qual espécie?" value={props.formData.customSpecies} onChange={e => props.setFormData({...props.formData, customSpecies: e.target.value})} className="mt-2 w-full px-3 py-2 border rounded-lg text-sm" />
                   )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Veterinário Requisitante (Externo)</label>
-                  <input type="text" value={props.formData.requesterVet} onChange={e => props.setFormData({...formData, requesterVet: e.target.value})} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT" placeholder="Quem pediu o exame?" />
+                  <input type="text" value={props.formData.requesterVet} onChange={e => props.setFormData({...props.formData, requesterVet: e.target.value})} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT" placeholder="Quem pediu o exame?" />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">CRMV do Requisitante</label>
-                  <input type="text" value={props.formData.requesterCrmv} onChange={e => props.setFormData({...formData, requesterCrmv: e.target.value})} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT" placeholder="Opcional" />
+                  <input type="text" value={props.formData.requesterCrmv} onChange={e => props.setFormData({...props.formData, requesterCrmv: e.target.value})} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT" placeholder="Opcional" />
                 </div>
 
                 {props.loggedUserEntity?.type === 'vet' ? (
@@ -138,7 +138,7 @@ export function ExamFormTab(props: DashboardData) {
                       <select
                         required={!props.isIndependentVetSubscriber}
                         value={props.formData.clinicId}
-                        onChange={e => props.setFormData({ ...formData, clinicId: e.target.value })}
+                        onChange={e => props.setFormData({ ...props.formData, clinicId: e.target.value })}
                         className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT"
                       >
                         <option value="">{props.isIndependentVetSubscriber ? 'Sem clínica (atendimento independente)' : 'Selecione a Clínica'}</option>
@@ -169,7 +169,7 @@ export function ExamFormTab(props: DashboardData) {
                 ) : (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Veterinário Responsável (Executor)</label>
-                    <select required value={props.formData.veterinarianId} onChange={e => props.setFormData({...formData, veterinarianId: e.target.value})} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT">
+                    <select required value={props.formData.veterinarianId} onChange={e => props.setFormData({...props.formData, veterinarianId: e.target.value})} className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT">
                       <option value="">Selecione o Veterinário</option>
                       {props.availableVeterinarians.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                     </select>
@@ -184,7 +184,7 @@ export function ExamFormTab(props: DashboardData) {
                     <label className="block text-xs font-bold text-gray-500 mb-1">Período</label>
                     <select 
                       value={props.formData.period} 
-                      onChange={e => props.setFormData({...formData, period: e.target.value as Period})} 
+                      onChange={e => props.setFormData({...props.formData, period: e.target.value as Period})} 
                       className="w-full px-3 py-2 border rounded-lg"
                     >
                       {props.availablePeriods.map(p => (
@@ -195,7 +195,7 @@ export function ExamFormTab(props: DashboardData) {
 
                   <div>
                     <label className="block text-xs font-bold text-gray-500 mb-1">Proprietário da Máquina</label>
-                    <select value={props.formData.machineOwner} onChange={e => props.setFormData({...formData, machineOwner: e.target.value as MachineOwner})} className="w-full px-3 py-2 border rounded-lg">
+                    <select value={props.formData.machineOwner} onChange={e => props.setFormData({...props.formData, machineOwner: e.target.value as MachineOwner})} className="w-full px-3 py-2 border rounded-lg">
                       <option value="professional">Profissional (Volante)</option>
                       <option value="clinic">Clínica (Fixa)</option>
                     </select>

@@ -1,5 +1,6 @@
 import ReactECharts from 'echarts-for-react';
 import { Calendar, Filter, FileText, DollarSign, UserCheck, Building2, Loader2 } from 'lucide-react';
+import { SummaryCard } from '../SummaryCard';
 import { formatMoney } from '../../utils/calculations';
 import type { DashboardData } from '../../hooks/useDashboardData';
 

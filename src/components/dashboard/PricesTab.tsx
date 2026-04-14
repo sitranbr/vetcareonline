@@ -550,7 +550,7 @@ export function PricesTab(props: DashboardData) {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1">Período</label>
-              <select value={props.priceForm.period} onChange={e => props.setPriceForm({...priceForm, period: e.target.value as any})} className="w-full px-3 py-2 border rounded-lg">
+              <select value={props.priceForm.period} onChange={e => props.setPriceForm({...props.priceForm, period: e.target.value as any})} className="w-full px-3 py-2 border rounded-lg">
                 <option value="comercial">Comercial</option>
                 <option value="noturno">Noturno</option>
                 <option value="fds">Fim de Semana</option>
@@ -563,7 +563,7 @@ export function PricesTab(props: DashboardData) {
                 value={props.priceForm.modality} 
                 onChange={e => {
                   const val = e.target.value;
-                  props.setPriceForm({...priceForm, modality: val});
+                  props.setPriceForm({...props.priceForm, modality: val});
                   if (val !== 'OUTROS') props.setCustomModalityName('');
                 }} 
                 className="w-full px-3 py-2 border rounded-lg"
@@ -610,17 +610,17 @@ export function PricesTab(props: DashboardData) {
             <h4 className="text-sm font-bold text-gray-800 mb-3">Valores do Serviço</h4>
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1">Valor Base (Cobrado do Cliente)</label>
-              <input type="number" step="0.01" value={props.priceForm.valor ?? ''} onChange={e => props.setPriceForm({...priceForm, valor: e.target.value === '' ? undefined : Number(e.target.value)})} className="w-full px-3 py-2 border rounded-lg font-bold" />
+              <input type="number" step="0.01" value={props.priceForm.valor ?? ''} onChange={e => props.setPriceForm({...props.priceForm, valor: e.target.value === '' ? undefined : Number(e.target.value)})} className="w-full px-3 py-2 border rounded-lg font-bold" />
             </div>
 
             <div className="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg mt-2">
               <div>
                 <label className="block text-xs font-bold text-blue-600 mb-1">Repasse Profissional</label>
-                <input type="number" step="0.01" value={props.priceForm.repasseProfessional ?? ''} onChange={e => props.setPriceForm({...priceForm, repasseProfessional: e.target.value === '' ? undefined : Number(e.target.value)})} className="w-full px-3 py-2 border rounded-lg" />
+                <input type="number" step="0.01" value={props.priceForm.repasseProfessional ?? ''} onChange={e => props.setPriceForm({...props.priceForm, repasseProfessional: e.target.value === '' ? undefined : Number(e.target.value)})} className="w-full px-3 py-2 border rounded-lg" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-purple-600 mb-1">Repasse Clínica</label>
-                <input type="number" step="0.01" value={props.priceForm.repasseClinic ?? ''} onChange={e => props.setPriceForm({...priceForm, repasseClinic: e.target.value === '' ? undefined : Number(e.target.value)})} className="w-full px-3 py-2 border rounded-lg" />
+                <input type="number" step="0.01" value={props.priceForm.repasseClinic ?? ''} onChange={e => props.setPriceForm({...props.priceForm, repasseClinic: e.target.value === '' ? undefined : Number(e.target.value)})} className="w-full px-3 py-2 border rounded-lg" />
               </div>
             </div>
           </div>
@@ -640,7 +640,7 @@ export function PricesTab(props: DashboardData) {
                 onChange={e => {
                   const val = e.target.value === '' ? undefined : Number(e.target.value);
                   props.setPriceForm({
-                    ...priceForm, 
+                    ...props.priceForm, 
                     taxaExtra: val,
                     taxaExtraProfessional: val, 
                     taxaExtraClinic: val === undefined ? undefined : 0
@@ -656,11 +656,11 @@ export function PricesTab(props: DashboardData) {
               <div className="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg mt-2 animate-fade-in">
                 <div>
                   <label className="block text-xs font-bold text-blue-600 mb-1">Taxa p/ Profissional</label>
-                  <input type="number" step="0.01" value={props.priceForm.taxaExtraProfessional ?? ''} onChange={e => props.setPriceForm({...priceForm, taxaExtraProfessional: e.target.value === '' ? undefined : Number(e.target.value)})} className="w-full px-3 py-2 border rounded-lg" />
+                  <input type="number" step="0.01" value={props.priceForm.taxaExtraProfessional ?? ''} onChange={e => props.setPriceForm({...props.priceForm, taxaExtraProfessional: e.target.value === '' ? undefined : Number(e.target.value)})} className="w-full px-3 py-2 border rounded-lg" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-purple-600 mb-1">Taxa p/ Clínica</label>
-                  <input type="number" step="0.01" value={props.priceForm.taxaExtraClinic ?? ''} onChange={e => props.setPriceForm({...priceForm, taxaExtraClinic: e.target.value === '' ? undefined : Number(e.target.value)})} className="w-full px-3 py-2 border rounded-lg" />
+                  <input type="number" step="0.01" value={props.priceForm.taxaExtraClinic ?? ''} onChange={e => props.setPriceForm({...props.priceForm, taxaExtraClinic: e.target.value === '' ? undefined : Number(e.target.value)})} className="w-full px-3 py-2 border rounded-lg" />
                 </div>
               </div>
             )}

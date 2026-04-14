@@ -181,7 +181,7 @@ export async function loadDashboardData(
             new Set([...myOwnVetIds, ...internalGuestVetIds, ...externalVetIds].filter(Boolean)),
           );
           if (allMyVetIds.length > 0) {
-            query = query.eq('clinic_id', loggedUserEntity.id).in('veterinarian_id', allMyVetIds);
+            query = query.eq('clinic_id', partnerClinic.id).in('veterinarian_id', allMyVetIds);
           } else {
             query = query.eq('id', '00000000-0000-0000-0000-000000000000');
           }

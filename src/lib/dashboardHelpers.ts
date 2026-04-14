@@ -65,6 +65,20 @@ export const isGenericVetId = (vetId?: string | null) => {
  * Veterinários cujo perfil pertence à árvore do parceiro selecionado (profile raiz = item do dropdown).
  * Inclui equipe direta (ownerId === raiz), o próprio executor com profileId === raiz e subordinados (owner aponta para perfil de outro membro já incluído).
  */
+/** Resolve `clinics.id` para o perfil de uma clínica parceira (dropdown de contexto). */
+export function resolveClinicEntityIdForPartnerProfile(
+  profileId: string,
+  clinics: { id: string; profileId?: string | null }[],
+  guestClinics: { id: string; profileId: string }[],
+  extraClinics: { id: string; profileId: string }[],
+): string | null {
+  const pid = String(profileId || '').trim();
+  if (!pid) return null;
+  const pools = [...guestClinics, ...extraClinics, ...clinics];
+  const row = pools.find((c) => String(c.profileId ?? '').trim() === pid);
+  return row?.id ?? null;
+}
+
 export const buildPartnerContextTeamVetEntityIds = (
   rootProfileId: string,
   veterinarians: { id: string; profileId?: string | null | undefined; ownerId?: string | null | undefined }[],

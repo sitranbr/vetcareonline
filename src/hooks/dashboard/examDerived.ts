@@ -1,7 +1,7 @@
 import { format, isValid, parseISO } from 'date-fns';
 import { getModalityLabel } from '../../utils/calculations';
 import type { Exam, Modality, Veterinarian } from '../../types';
-import { executorMatchesPartnerRoot } from '../../lib/dashboardHelpers';
+import { executorMatchesPartnerRoot, resolveClinicEntityIdForPartnerProfile } from '../../lib/dashboardHelpers';
 
 type PartnerVetRow = { id: string; profileId: string; ownerId?: string };
 
@@ -13,6 +13,11 @@ export function deriveFilteredExamsForList(params: {
   examListDateTo: string;
   isRootClinicSubscriber: boolean;
   clinicPartnerContextProfileId: string | null;
+  /** Perfil do item selecionado no dropdown (quando há parceiro). */
+  partnerContextOptions: { profileId: string; name: string; role?: string }[];
+  clinics: { id: string; profileId?: string | null }[];
+  guestClinics: { id: string; profileId: string }[];
+  extraClinics: { id: string; profileId: string }[];
   myClinicEntityId: string | null;
   subscriberInternalVetEntityIds: Set<string>;
   partnerContextTeamForList: Set<string> | null;
@@ -28,6 +33,10 @@ export function deriveFilteredExamsForList(params: {
     examListDateTo,
     isRootClinicSubscriber,
     clinicPartnerContextProfileId,
+    partnerContextOptions,
+    clinics,
+    guestClinics,
+    extraClinics,
     myClinicEntityId,
     subscriberInternalVetEntityIds,
     partnerContextTeamForList,
@@ -56,19 +65,32 @@ export function deriveFilteredExamsForList(params: {
         if (e.clinicId !== myClinicEntityId) return false;
         const vid = (e.veterinarianId ?? '').toString().trim();
         if (vid && !subscriberInternalVetEntityIds.has(vid)) return false;
-      } else if (clinicPartnerContextProfileId) {
-        if (e.clinicId !== myClinicEntityId) return false;
-        if (
-          !executorMatchesPartnerRoot(
-            e.veterinarianId,
+      } else {
+        const opt = partnerContextOptions.find((o) => o.profileId === clinicPartnerContextProfileId);
+        const isPartnerClinic = String(opt?.role ?? '').toLowerCase() === 'clinic';
+        if (isPartnerClinic) {
+          const partnerClinicEntityId = resolveClinicEntityIdForPartnerProfile(
             clinicPartnerContextProfileId,
-            veterinarians,
-            guestVets,
-            extraVets,
-            partnerContextTeamForList,
-          )
-        ) {
-          return false;
+            clinics,
+            guestClinics,
+            extraClinics,
+          );
+          if (!partnerClinicEntityId) return false;
+          if (e.clinicId !== partnerClinicEntityId) return false;
+        } else {
+          if (e.clinicId !== myClinicEntityId) return false;
+          if (
+            !executorMatchesPartnerRoot(
+              e.veterinarianId,
+              clinicPartnerContextProfileId,
+              veterinarians,
+              guestVets,
+              extraVets,
+              partnerContextTeamForList,
+            )
+          ) {
+            return false;
+          }
         }
       }
     }
