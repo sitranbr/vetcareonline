@@ -15,6 +15,7 @@ import {
   formatPriceRuleCopyPreviewLine,
   isGenericClinicId,
   buildPartnerContextTeamVetEntityIds,
+  executorMatchesPartnerRoot,
   priceRuleMatchesPriceTablePartnerFilter,
   formatExamSaveError,
   SPECIES_OPTIONS,
@@ -97,7 +98,7 @@ export function useDashboardData() {
     requirePassword?: boolean; 
     errorMessage?: string;
     variant?: 'danger' | 'warning';
-    payload?: any;
+    payload?: unknown;
   }>({ isOpen: false, type: null, id: null, title: '', message: '', requirePassword: false, errorMessage: '', variant: 'danger' });
   
   const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
@@ -151,7 +152,7 @@ export function useDashboardData() {
   const [extraVets, setExtraVets] = useState<{id: string, name: string, profileId: string, ownerId?: string}[]>([]);
   const [guestClinics, setGuestClinics] = useState<{id: string, name: string, profileId: string, ownerId?: string}[]>([]); 
   const [guestVets, setGuestVets] = useState<{id: string, name: string, profileId: string, ownerId?: string}[]>([]);
-  const [ownerClinic, setOwnerClinic] = useState<any>(null); 
+  const [ownerClinic, setOwnerClinic] = useState<{ id: string; name: string; profileId: string } | null>(null); 
 
   useEffect(() => {
     let isMounted = true;
@@ -163,7 +164,12 @@ export function useDashboardData() {
         return;
       }
       try {
-        const result = await loadPartnerEntities(user as any);
+        const result = await loadPartnerEntities({
+          id: user.id,
+          ownerId: user.ownerId ?? null,
+          role: user.role ?? null,
+          partners: user.partners ?? null,
+        });
         if (!isMounted) return;
         setExtraClinics(result.extraClinics);
         setExtraVets(result.extraVets);
@@ -191,7 +197,7 @@ export function useDashboardData() {
     
     (async () => {
       const opts = await loadPartnerContextOptions({
-        user: u as any,
+        user: { id: u.id, ownerId: u.ownerId ?? null, role: u.role ?? null, partners: u.partners ?? null },
         guestVets,
         guestClinics,
       });
@@ -255,7 +261,7 @@ export function useDashboardData() {
     setFormData((prev) => ({ ...prev, ...resolved.formIds }));
   }, [user, veterinarians, clinics, currentTenant]);
 
-  /** SÃ³ "visualizaÃ§Ã£o de parceiro" quando isMe Ã© explicitamente false (undefined â‰  parceiro). */
+  /** Só "visualização de parceiro" quando isMe é explicitamente false (undefined != parceiro). */
   const isPartnerView = useMemo(() => {
     return currentTenant != null && currentTenant.isMe === false;
   }, [currentTenant]);
@@ -472,17 +478,17 @@ export function useDashboardData() {
   ]);
 
   const [filterPet, setFilterPet] = useState('');
-  /** OrdenaÃ§Ã£o da lista de exames por data (mais recente = padrÃ£o, alinhado ao carregamento atual). */
+  /** Ordenação da lista de exames por data (mais recente = padrão, alinhado ao carregamento atual). */
   const [examListDateOrder, setExamListDateOrder] = useState<'desc' | 'asc'>('desc');
   /** Filtro por intervalo de datas do exame (campo date); vazio = sem limite naquele extremo. */
   const [examListDateFrom, setExamListDateFrom] = useState('');
   const [examListDateTo, setExamListDateTo] = useState('');
   const [examListPage, setExamListPage] = useState(1);
 
-  /** PermissÃµes alinhadas Ã  tela de criaÃ§Ã£o de membros (AdminUserForm): sem bypass por role vet/clÃ­nica. */
+  /** Permissões alinhadas à tela de criação de membros (AdminUserForm): sem bypass por role vet/clínica. */
   const permFlags = useMemo(() => {
     return buildPermFlags({
-      user: user as any,
+      user,
       isPartnerView,
       isIndependentVetSubscriber,
       loggedUserEntityType: loggedUserEntity?.type ?? null,
@@ -568,7 +574,7 @@ export function useDashboardData() {
   };
 
   let effectiveClinicId = formData.clinicId;
-  /** VeterinÃ¡rio com "Sem clÃ­nica" explÃ­cito: nÃ£o herdar filtro da lista (evita repasse indevido Ã  clÃ­nica). */
+  /** Veterinário com "Sem clínica" explícito: não herdar filtro da lista (evita repasse indevido à clínica). */
   const vetChoseNoClinic =
     loggedUserEntity?.type === 'vet' && !(formData.clinicId || '').trim();
   if (!vetChoseNoClinic) {
@@ -789,7 +795,10 @@ export function useDashboardData() {
     setIsGeneratingPdf(true);
     try {
       const branding = getBrandingForExam(exams[0] || {} as Exam);
-      const { vetNames, clinicNames } = buildVetClinicNameMaps(veterinarians, clinics);
+      const partnerVetsForPdf = Array.from(
+        new Map([...(guestVets || []), ...(extraVets || [])].map((v) => [v.id, { id: v.id, name: v.name }])).values(),
+      );
+      const { vetNames, clinicNames } = buildVetClinicNameMaps(veterinarians, clinics, partnerVetsForPdf);
       const groupByVet = reportPartnerFilter === 'all';
 
       await generatePDFReport(
@@ -798,7 +807,7 @@ export function useDashboardData() {
         reportStartDate, 
         reportEndDate, 
         branding,
-        { groupByVet, vetNames, clinicNames }
+        { groupByVet, vetNames, clinicNames, partnerLabel: reportPartnerLabel }
       );
     } catch (error) {
       console.error("Erro ao gerar PDF:", error);
@@ -1018,6 +1027,9 @@ export function useDashboardData() {
         veterinarians,
         guestVets,
         extraVets,
+        clinics,
+        guestClinics,
+        extraClinics,
       }),
     [
       exams,
@@ -1029,6 +1041,9 @@ export function useDashboardData() {
       veterinarians,
       guestVets,
       extraVets,
+      clinics,
+      guestClinics,
+      extraClinics,
     ],
   );
 
@@ -1051,6 +1066,84 @@ export function useDashboardData() {
     () => reduceExamMoneyStats(filteredExamsForReport),
     [filteredExamsForReport],
   );
+
+  const reportPartnerLabel = useMemo(() => {
+    const raw = (reportPartnerFilter || '').trim();
+    if (!raw || raw === 'all') return 'Geral (Todos)';
+    const [type, id] = raw.split('|');
+    if (type === 'vet') {
+      const v = availableVeterinarians.find((x) => x.id === id) as { name?: string } | undefined;
+      return v?.name ? `Veterinário: ${v.name}` : `Veterinário: ${id}`;
+    }
+    if (type === 'clinic') {
+      const pools = [...(guestClinics || []), ...(extraClinics || []), ...(clinics || [])] as Array<{ id: string; name?: string }>;
+      const c = pools.find((x) => x.id === id) || availableClinicsForVet.find((x) => x.id === id);
+      return c?.name ? `Clínica: ${c.name}` : `Clínica: ${id}`;
+    }
+    return raw;
+  }, [reportPartnerFilter, availableVeterinarians, availableClinicsForVet, clinics, guestClinics, extraClinics]);
+
+  /**
+   * UX: se o usuário seleciona um parceiro no relatório e o período atual zera o resultado,
+   * mas existem exames desse parceiro fora do intervalo, expandir o período automaticamente.
+   */
+  useEffect(() => {
+    const raw = (reportPartnerFilter || '').trim();
+    if (!raw || raw === 'all') return;
+    if (!exams?.length) return;
+    if (filteredExamsForReport.length > 0) return;
+
+    const [type, id] = raw.split('|');
+    if (!type || !id) return;
+
+    const partnerMatchesIgnoringDate = (e: Exam): boolean => {
+      if (type === 'clinic') return (e.clinicId || '').toString().trim() === id;
+      if (type !== 'vet') return false;
+      const ev = (e.veterinarianId ?? '').toString().trim();
+      if (!ev) return false;
+      const selectedVet = availableVeterinarians.find((v) => v.id === id) as { profileId?: string | null } | undefined;
+      if (selectedVet?.profileId) {
+        return executorMatchesPartnerRoot(
+          ev,
+          selectedVet.profileId,
+          veterinarians,
+          guestVets,
+          extraVets,
+          reportVetFilterTeam,
+        );
+      }
+      return ev === id;
+    };
+
+    const matches = exams.filter(partnerMatchesIgnoringDate);
+    if (matches.length === 0) return;
+
+    const dates = matches
+      .map((e) => (e.date || '').toString().trim())
+      .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+      .sort();
+    if (dates.length === 0) return;
+
+    const minDate = dates[0];
+    const maxDate = dates[dates.length - 1];
+
+    const nextStart = reportStartDate && reportStartDate < minDate ? reportStartDate : minDate;
+    const nextEnd = reportEndDate && reportEndDate > maxDate ? reportEndDate : maxDate;
+
+    if (nextStart !== reportStartDate) setReportStartDate(nextStart);
+    if (nextEnd !== reportEndDate) setReportEndDate(nextEnd);
+  }, [
+    reportPartnerFilter,
+    exams,
+    filteredExamsForReport.length,
+    reportStartDate,
+    reportEndDate,
+    availableVeterinarians,
+    reportVetFilterTeam,
+    veterinarians,
+    guestVets,
+    extraVets,
+  ]);
 
   const listStats = useMemo(
     () => reduceExamMoneyStats(filteredExamsForList),
@@ -1163,6 +1256,7 @@ export function useDashboardData() {
     setReportEndDate,
     reportPartnerFilter,
     setReportPartnerFilter,
+    reportPartnerLabel,
     isGeneratingPdf,
     setIsGeneratingPdf,
     reportEditorState,

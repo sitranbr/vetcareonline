@@ -196,14 +196,18 @@
     <div class="entity" style="animation-delay:0.06s">
       <div class="entity-header color-prof"><div class="dot" style="background:var(--accent)"></div>public.profiles</div>
       <div class="entity-body">
-        <div class="field"><span class="field-name pk">id <span class="badge badge-pk">PK</span></span><span class="field-type">UUID (FK auth.users)</span></div>
+        <div class="field"><span class="field-name pk">id <span class="badge badge-pk">PK</span></span><span class="field-type">UUID <span class="badge badge-fk">FK</span> → auth.users.id</span></div>
         <div class="field"><span class="field-name">email</span><span class="field-type">TEXT</span></div>
         <div class="field"><span class="field-name">name</span><span class="field-type">TEXT</span></div>
-        <div class="field"><span class="field-name">role</span><span class="field-type">admin | vet | clinic | reception</span></div>
-        <div class="field"><span class="field-name">level</span><span class="field-type">1–5</span></div>
-        <div class="field"><span class="field-name fk">owner_id <span class="badge badge-fk">FK</span></span><span class="field-type">UUID nullable (herança)</span></div>
-        <div class="field"><span class="field-name">permissions</span><span class="field-type">JSONB</span></div>
-        <div class="field"><span class="field-name">partners[]</span><span class="field-type">TEXT[] (UUID como texto)</span></div>
+        <div class="field"><span class="field-name">role</span><span class="field-type">TEXT (admin | owner | vet | clinic | reception)</span></div>
+        <div class="field"><span class="field-name">level</span><span class="field-type">INTEGER</span></div>
+        <div class="field"><span class="field-name">permissions</span><span class="field-type">JSONB (default {})</span></div>
+        <div class="field"><span class="field-name">created_at</span><span class="field-type">TIMESTAMPTZ (default now)</span></div>
+        <div class="field"><span class="field-name">updated_at</span><span class="field-type">TIMESTAMPTZ (default now)</span></div>
+        <div class="field"><span class="field-name fk">owner_id <span class="badge badge-fk">FK</span></span><span class="field-type">UUID → auth.users.id</span></div>
+        <div class="field"><span class="field-name">partners</span><span class="field-type">TEXT[] (default {})</span></div>
+        <div class="field"><span class="field-name">signature_url</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">access_blocked</span><span class="field-type">BOOLEAN (default false)</span></div>
       </div>
     </div>
 
@@ -212,9 +216,16 @@
       <div class="entity-body">
         <div class="field"><span class="field-name pk">id <span class="badge badge-pk">PK</span></span><span class="field-type">UUID</span></div>
         <div class="field"><span class="field-name fk">profile_id <span class="badge badge-fk">FK</span></span><span class="field-type">UUID → profiles.id</span></div>
-        <div class="field"><span class="field-name">name / email</span><span class="field-type">TEXT</span></div>
-        <div class="field"><span class="field-name">crmv / document</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">name</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">crmv</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">document</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">address</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">phone</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">email</span><span class="field-type">TEXT</span></div>
         <div class="field"><span class="field-name">logo_url</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">is_default</span><span class="field-type">BOOLEAN (default false)</span></div>
+        <div class="field"><span class="field-name">linked_clinic_ids</span><span class="field-type">TEXT[] (default [])</span></div>
+        <div class="field"><span class="field-name">created_at</span><span class="field-type">TIMESTAMPTZ (default now)</span></div>
       </div>
     </div>
 
@@ -223,10 +234,15 @@
       <div class="entity-body">
         <div class="field"><span class="field-name pk">id <span class="badge badge-pk">PK</span></span><span class="field-type">UUID</span></div>
         <div class="field"><span class="field-name fk">profile_id <span class="badge badge-fk">FK</span></span><span class="field-type">UUID → profiles.id</span></div>
-        <div class="field"><span class="field-name">name / email</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">name</span><span class="field-type">TEXT</span></div>
         <div class="field"><span class="field-name">document</span><span class="field-type">TEXT</span></div>
-        <div class="field"><span class="field-name">responsible_name</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">address</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">phone</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">email</span><span class="field-type">TEXT</span></div>
         <div class="field"><span class="field-name">logo_url</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">is_default</span><span class="field-type">BOOLEAN (default false)</span></div>
+        <div class="field"><span class="field-name">created_at</span><span class="field-type">TIMESTAMPTZ (default now)</span></div>
+        <div class="field"><span class="field-name">responsible_name</span><span class="field-type">TEXT</span></div>
       </div>
     </div>
 
@@ -235,13 +251,25 @@
       <div class="entity-body">
         <div class="field"><span class="field-name pk">id <span class="badge badge-pk">PK</span></span><span class="field-type">UUID</span></div>
         <div class="field"><span class="field-name">date</span><span class="field-type">DATE</span></div>
-        <div class="field"><span class="field-name">pet_name / species</span><span class="field-type">TEXT</span></div>
-        <div class="field"><span class="field-name">requester_vet / requester_crmv</span><span class="field-type">TEXT</span></div>
-        <div class="field"><span class="field-name fk">veterinarian_id <span class="badge badge-fk">FK</span></span><span class="field-type">UUID (executor)</span></div>
-        <div class="field"><span class="field-name fk">clinic_id <span class="badge badge-fk">FK</span></span><span class="field-type">UUID (local)</span></div>
-        <div class="field"><span class="field-name">machine_owner</span><span class="field-type">professional | clinic</span></div>
-        <div class="field"><span class="field-name">values (total/repasse)</span><span class="field-type">NUMERIC</span></div>
-        <div class="field"><span class="field-name">status</span><span class="field-type">pending | partial | completed</span></div>
+        <div class="field"><span class="field-name">pet_name</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">modality</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">period</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">studies</span><span class="field-type">INTEGER (default 1)</span></div>
+        <div class="field"><span class="field-name">study_description</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">rx_studies</span><span class="field-type">JSONB (default [])</span></div>
+        <div class="field"><span class="field-name fk">veterinarian_id <span class="badge badge-fk">FK</span></span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name fk">clinic_id <span class="badge badge-fk">FK</span></span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">machine_owner</span><span class="field-type">TEXT (professional | clinic)</span></div>
+        <div class="field"><span class="field-name">total_value</span><span class="field-type">NUMERIC (default 0)</span></div>
+        <div class="field"><span class="field-name">repasse_professional</span><span class="field-type">NUMERIC (default 0)</span></div>
+        <div class="field"><span class="field-name">repasse_clinic</span><span class="field-type">NUMERIC (default 0)</span></div>
+        <div class="field"><span class="field-name">status</span><span class="field-type">TEXT (default pending)</span></div>
+        <div class="field"><span class="field-name">report_content</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">report_images</span><span class="field-type">TEXT[] (default [])</span></div>
+        <div class="field"><span class="field-name">created_at</span><span class="field-type">TIMESTAMPTZ (default now)</span></div>
+        <div class="field"><span class="field-name">requester_vet</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">requester_crmv</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">species</span><span class="field-type">TEXT</span></div>
       </div>
     </div>
 
@@ -249,12 +277,21 @@
       <div class="entity-header color-price"><div class="dot" style="background:var(--price)"></div>price_rules</div>
       <div class="entity-body">
         <div class="field"><span class="field-name pk">id <span class="badge badge-pk">PK</span></span><span class="field-type">UUID</span></div>
-        <div class="field"><span class="field-name fk">clinic_id <span class="badge badge-fk">FK</span></span><span class="field-type">UUID (ou “todas”)</span></div>
-        <div class="field"><span class="field-name fk">veterinarian_id <span class="badge badge-fk">FK</span></span><span class="field-type">UUID (ou “todos”)</span></div>
-        <div class="field"><span class="field-name">modality</span><span class="field-type">USG | RX | ...</span></div>
-        <div class="field"><span class="field-name">period</span><span class="field-type">comercial | noturno | fds | feriado | all</span></div>
-        <div class="field"><span class="field-name">valor / repasses</span><span class="field-type">NUMERIC</span></div>
-        <div class="field"><span class="field-name">taxa_extra / observacoes</span><span class="field-type">NUMERIC? / TEXT</span></div>
+        <div class="field"><span class="field-name fk">clinic_id <span class="badge badge-fk">FK</span></span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">modality</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">period</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">label</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">period_label</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">valor</span><span class="field-type">NUMERIC (default 0)</span></div>
+        <div class="field"><span class="field-name">repasse_professional</span><span class="field-type">NUMERIC (default 0)</span></div>
+        <div class="field"><span class="field-name">repasse_clinic</span><span class="field-type">NUMERIC (default 0)</span></div>
+        <div class="field"><span class="field-name">taxa_extra</span><span class="field-type">NUMERIC (default 0)</span></div>
+        <div class="field"><span class="field-name">taxa_extra_professional</span><span class="field-type">NUMERIC (default 0)</span></div>
+        <div class="field"><span class="field-name">taxa_extra_clinic</span><span class="field-type">NUMERIC (default 0)</span></div>
+        <div class="field"><span class="field-name">observacoes</span><span class="field-type">TEXT</span></div>
+        <div class="field"><span class="field-name">created_at</span><span class="field-type">TIMESTAMPTZ (default now)</span></div>
+        <div class="field"><span class="field-name fk">owner_id <span class="badge badge-fk">FK</span></span><span class="field-type">UUID → profiles.id</span></div>
+        <div class="field"><span class="field-name fk">veterinarian_id <span class="badge badge-fk">FK</span></span><span class="field-type">TEXT</span></div>
       </div>
     </div>
   </div>
@@ -329,21 +366,22 @@
     <div class="partner-intro" style="max-width:960px;margin:0 auto 1.2rem">
       <strong>Isolamento:</strong> RLS no Supabase/Postgres define quem vê/edita cada linha. Operações críticas usam RPC <strong>SECURITY DEFINER</strong> com
       <strong>search_path</strong> protegido para evitar injeção e loops em políticas.
+      <br>Essa visibilidade também alimenta a UI: o dropdown e os filtros de parceiros resolvem equipe via <code>profiles.partners</code>/<code>profiles.owner_id</code> e então listam exames por <code>exams.clinic_id</code>/<code>exams.veterinarian_id</code>.
     </div>
 
     <div class="sql-block">
       <div class="sql-header open" onclick="toggleSql(this)"><span>Policies (visão)</span><span class="chevron">▶</span></div>
       <pre class="sql-code visible"><span class="cm">-- Visualização de exames (conceito)</span>
+<span class="cm">-- exams.veterinarian_id e exams.clinic_id são TEXT (UUID como texto)</span>
 <span class="kw">ALLOW SELECT</span> on exams <span class="kw">IF</span>
-  veterinarian_id = <span class="kw">auth.uid()</span>
-  <span class="kw">OR</span> clinic_id = <span class="kw">auth.uid()</span>
-  <span class="kw">OR</span> sou equipe (owner_id)
-  <span class="kw">OR</span> sou parceiro (profiles.partners)
+  exam_visible_to_tenant(clinic_id, veterinarian_id)
 
-<span class="cm">-- Visualização de perfis de parceiros</span>
+<span class="cm">-- Visualização de perfis da equipe do parceiro</span>
+<span class="cm">-- Evita recursão usando função SECURITY DEFINER (anti-loop na leitura de profiles)</span>
 <span class="kw">ALLOW SELECT</span> on profiles <span class="kw">IF</span>
   id = <span class="kw">auth.uid()</span>
-  <span class="kw">OR</span> partners @&gt; ARRAY[auth.uid()::text]</pre>
+  <span class="kw">OR</span> owner_id = <span class="kw">auth.uid()</span>
+  <span class="kw">OR</span> (owner_id <span class="kw">IS NOT NULL</span> <span class="kw">AND</span> profile_owner_is_in_my_partners(owner_id))</pre>
     </div>
 
     <div class="sql-block">
@@ -352,6 +390,7 @@
 <span class="cm">-- Valida: existe? não auto-vincula? não duplica?</span>
 <span class="cm">-- Aplica vínculo mútuo em profiles.partners[]</span>
 
+<span class="cm">-- profile_owner_is_in_my_partners(target_owner uuid) (SECURITY DEFINER, anti-recursão)</span>
 <span class="cm">-- get_safe_my_level()</span>
 <span class="cm">-- Retorna nível sem recursão em RLS</span>
 

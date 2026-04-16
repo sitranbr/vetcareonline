@@ -145,6 +145,9 @@ export function deriveFilteredExamsForReport(params: {
   veterinarians: Veterinarian[];
   guestVets: PartnerVetRow[];
   extraVets: PartnerVetRow[];
+  clinics: { id: string; profileId?: string | null }[];
+  guestClinics: { id: string; profileId: string }[];
+  extraClinics: { id: string; profileId: string }[];
 }): Exam[] {
   const {
     exams,
@@ -156,6 +159,9 @@ export function deriveFilteredExamsForReport(params: {
     veterinarians,
     guestVets,
     extraVets,
+    clinics,
+    guestClinics,
+    extraClinics,
   } = params;
 
   const filtered = exams.filter((e) => {
@@ -185,7 +191,35 @@ export function deriveFilteredExamsForReport(params: {
           return false;
         }
       }
-      if (type === 'clinic' && e.clinicId !== id) return false;
+      if (type === 'clinic') {
+        // "Clínica parceira" no relatório significa: exames executados pela equipe do parceiro,
+        // mesmo quando o local do exame (clinic_id) é a minha clínica.
+        const clinicId = (id || '').trim();
+        if (!clinicId) return false;
+
+        // Exame realizado na própria unidade parceira (quando aplicável).
+        if ((e.clinicId || '').toString().trim() === clinicId) return true;
+
+        const pools = [...guestClinics, ...extraClinics, ...clinics];
+        const selected = pools.find((c) => String(c.id ?? '').trim() === clinicId);
+        const partnerRootProfileId = selected ? String(selected.profileId ?? '').trim() : '';
+        if (!partnerRootProfileId) return false;
+
+        const ev = (e.veterinarianId ?? '').toString().trim();
+        if (!ev) return false;
+        if (
+          !executorMatchesPartnerRoot(
+            ev,
+            partnerRootProfileId,
+            veterinarians,
+            guestVets,
+            extraVets,
+            reportVetFilterTeam,
+          )
+        ) {
+          return false;
+        }
+      }
     }
 
     return true;

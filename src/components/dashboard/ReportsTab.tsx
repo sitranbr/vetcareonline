@@ -5,6 +5,35 @@ import { formatMoney } from '../../utils/calculations';
 import type { DashboardData } from '../../hooks/useDashboardData';
 
 export function ReportsTab(props: DashboardData) {
+  const clinicsByProfileId = new Map<string, { id: string; name: string }>();
+  [...(props.clinics || []), ...(props.extraClinics || []), ...(props.guestClinics || [])].forEach((c) => {
+    const pid = String((c as any).profileId ?? '').trim();
+    const id = String((c as any).id ?? '').trim();
+    if (!pid || !id) return;
+    if (!clinicsByProfileId.has(pid)) clinicsByProfileId.set(pid, { id, name: (c as any).name || id });
+  });
+
+  const directPartnerIds = new Set<string>((props.user?.partners || []).filter(Boolean) as string[]);
+
+  const reportVetOptions = (props.availableVeterinarians || []).filter((v: any) => {
+    const pid = String(v?.profileId ?? '').trim();
+    const oid = String(v?.ownerId ?? '').trim();
+
+    // Se o "vet" na verdade é perfil de clínica, não listar como vet.
+    if (pid && clinicsByProfileId.has(pid)) return false;
+
+    // Regra: no filtro do relatório para clínica, listar apenas parceiros diretos (profiles.id ∈ partners[]).
+    // Um membro de equipe (guest) do parceiro tem ownerId = parceiro raiz e profileId != parceiro raiz (ex.: Lineu).
+    const isTeamMemberOfPartner = !!oid && directPartnerIds.has(oid) && !directPartnerIds.has(pid);
+    if (isTeamMemberOfPartner) return false;
+
+    return true;
+  });
+
+  const reportClinicOptions = Array.from(clinicsByProfileId.values()).sort((a, b) =>
+    a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }),
+  );
+
   return (
           <div className="p-6">
             <div className="flex justify-between items-center mb-6">
@@ -25,9 +54,25 @@ export function ReportsTab(props: DashboardData) {
                   >
                     <option value="all">Geral (Todos)</option>
                     {props.loggedUserEntity?.type === 'clinic' || props.user?.level === 1 ? (
-                      <optgroup label="Veterinários">
-                        {props.availableVeterinarians.map(v => <option key={v.id} value={`vet|${v.id}`}>{v.name}</option>)}
-                      </optgroup>
+                      <>
+                        {reportClinicOptions.length > 0 ? (
+                          <optgroup label="Clínicas">
+                            {reportClinicOptions.map((c) => (
+                              <option key={c.id} value={`clinic|${c.id}`}>
+                                {c.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ) : null}
+
+                        <optgroup label="Veterinários">
+                          {reportVetOptions.map((v: any) => (
+                            <option key={v.id} value={`vet|${v.id}`}>
+                              {v.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      </>
                     ) : null}
                     {props.loggedUserEntity?.type === 'vet' || props.user?.level === 1 ? (
                       <optgroup label="Clínicas">

@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import autoTable, { type CellHookData, type Styles } from 'jspdf-autotable';
 import { Exam, User, BrandingInfo, Veterinarian } from '../types';
 import { formatMoney, getModalityLabel, getPeriodLabel } from './calculations';
 import { format, parseISO } from 'date-fns';
@@ -7,12 +7,12 @@ import { ptBR } from 'date-fns/locale';
 import { supabase } from '../lib/supabase';
 
 const COLORS = {
-  primary: [90, 143, 145], // #5A8F91 (Petcare Default)
-  secondary: [156, 189, 191], // #9CBDBF (Petcare Light)
-  dark: [21, 80, 78], // #15504E (Petcare Dark)
-  text: [60, 60, 60],
-  lightBg: [244, 249, 249]
-};
+  primary: [90, 143, 145] as [number, number, number], // #5A8F91 (Petcare Default)
+  secondary: [156, 189, 191] as [number, number, number], // #9CBDBF (Petcare Light)
+  dark: [21, 80, 78] as [number, number, number], // #15504E (Petcare Dark)
+  text: [60, 60, 60] as [number, number, number],
+  lightBg: [244, 249, 249] as [number, number, number],
+} as const;
 
 /** Fallback se Inter (public/fonts/Inter-VF.ttf) não carregar. */
 const PDF_FONT_FALLBACK = 'helvetica';
@@ -132,7 +132,7 @@ const addFooter = (doc: jsPDF, branding: BrandingInfo, pageNumber: number, total
 };
 
 const renderHtmlToPdf = (doc: jsPDF, html: string, startX: number, startY: number, maxWidth: number, fontName: string = PDF_FONT_FALLBACK) => {
-  let text = html
+  const text = html
     .replace(/<div>/g, '\n')
     .replace(/<\/div>/g, '')
     .replace(/<p>/g, '\n')
@@ -209,7 +209,12 @@ export const generatePDFReport = async (
   startDate: string, 
   endDate: string, 
   branding: BrandingInfo,
-  options?: { groupByVet?: boolean, vetNames?: Record<string, string>, clinicNames?: Record<string, string> }
+  options?: {
+    groupByVet?: boolean;
+    vetNames?: Record<string, string>;
+    clinicNames?: Record<string, string>;
+    partnerLabel?: string;
+  }
 ) => {
   const reportExams = [...exams].sort((a, b) => {
     const ta = parseISO(a.date).getTime();
@@ -235,6 +240,7 @@ export const generatePDFReport = async (
   doc.text(`Gerado por: ${user.name}`, 14, 42);
   doc.text(`Data de Emissão: ${today}`, 14, 47);
   doc.text(`Período: ${periodStart} até ${periodEnd}`, 14, 52);
+  doc.text(`Filtro: ${options?.partnerLabel || 'Geral (Todos)'}`, 14, 57);
   
   doc.setFontSize(PDF_REPORT_META_SIDE_PT);
   doc.setTextColor(150);
@@ -248,7 +254,7 @@ export const generatePDFReport = async (
   const totalRepasseUnivet = totalValue - totalRepasseAndre;
   const totalISS = totalValue * 0.05;
 
-  const startY = 60;
+  const startY = 65;
   const boxHeight = canViewFinancials ? 30 : 20;
   
   // Caixa de Resumo Financeiro Geral
@@ -327,7 +333,7 @@ export const generatePDFReport = async (
   let currentY = startY + boxHeight + 10;
 
   /** Rótulos curtos para caber melhor no cabeçalho com fonte reduzida. */
-  const tableHeaders = ['Data', 'PET', 'Solicit.', 'Modalidade', 'Período', 'Máquina', 'Valor'];
+  const tableHeaders = ['Data', 'PET', 'Veterinário', 'Solicit.', 'Modalidade', 'Período', 'Máquina', 'Valor'];
   if (canViewFinancials) tableHeaders.push('Líq. Prof.', 'Líq. Clín.');
 
   groups.forEach(group => {
@@ -348,14 +354,18 @@ export const generatePDFReport = async (
       if (exam.studies && exam.studies > 1) modalityText += ` (${exam.studies}x)`;
       if (exam.studyDescription) modalityText += `\n${exam.studyDescription}`;
 
+      const vetId = (exam.veterinarianId || '').toString().trim();
+      const vetName = (options?.vetNames && vetId ? options.vetNames[vetId] : '') || 'Não Identificado';
+
       const row = [
         format(parseISO(exam.date), 'dd/MM/yyyy'),
         exam.petName,
+        vetName,
         exam.requesterVet || '-',
         modalityText,
         getPeriodLabel(exam.period),
         exam.machineOwner === 'professional' ? 'Profissional' : 'Clínica',
-        formatMoney(exam.totalValue)
+        formatMoney(exam.totalValue),
       ];
 
       if (canViewFinancials) {
@@ -370,29 +380,30 @@ export const generatePDFReport = async (
     const subTotalClinic = subTotalValue - subTotalProf;
 
     const footRow = canViewFinancials 
-      ? [[ 'SUBTOTAL', '', '', '', '', '', formatMoney(subTotalValue), formatMoney(subTotalProf), formatMoney(subTotalClinic) ]] 
-      : [[ 'SUBTOTAL', '', '', '', '', '', formatMoney(subTotalValue) ]];
+      ? [[ 'SUBTOTAL', '', '', '', '', '', '', formatMoney(subTotalValue), formatMoney(subTotalProf), formatMoney(subTotalClinic) ]] 
+      : [[ 'SUBTOTAL', '', '', '', '', '', '', formatMoney(subTotalValue) ]];
 
-    /** Larguras em mm (soma = 182, largura útil da tabela) para evitar quebra no SUBTOTAL/valores. */
-    const columnStylesFinancial: Record<number, unknown> = {
-      0: { cellWidth: 20, halign: 'center', valign: 'middle' },
-      1: { cellWidth: 18, valign: 'middle' },
-      2: { cellWidth: 22, valign: 'middle' },
-      3: { cellWidth: 25, valign: 'middle' },
-      4: { cellWidth: 18, halign: 'center', valign: 'middle' },
-      5: { cellWidth: 16, halign: 'center', valign: 'middle' },
-      6: { cellWidth: 21, halign: 'right', fontStyle: 'bold', valign: 'middle' },
-      7: { cellWidth: 21, halign: 'right', textColor: COLORS.primary, valign: 'middle' },
-      8: { cellWidth: 21, halign: 'right', textColor: COLORS.dark, valign: 'middle' }
+    const columnStylesFinancial: Record<number, Partial<Styles>> = {
+      0: { cellWidth: 16, halign: 'center', valign: 'middle' }, // Data
+      1: { cellWidth: 20, valign: 'middle' }, // PET
+      2: { cellWidth: 20, valign: 'middle' }, // Veterinário
+      3: { cellWidth: 18, valign: 'middle' }, // Solicit.
+      4: { cellWidth: 25, valign: 'middle' }, // Modalidade
+      5: { cellWidth: 14, halign: 'center', valign: 'middle' }, // Período
+      6: { cellWidth: 14, halign: 'center', valign: 'middle' }, // Máquina
+      7: { cellWidth: 15, halign: 'right', fontStyle: 'bold', valign: 'middle' }, // Valor
+      8: { cellWidth: 20, halign: 'right', valign: 'middle' }, // Líq. Prof.
+      9: { cellWidth: 20, halign: 'right', valign: 'middle' }, // Líq. Clín.
     };
-    const columnStylesNoFinancial: Record<number, unknown> = {
-      0: { cellWidth: 22, halign: 'center', valign: 'middle' },
-      1: { cellWidth: 26, valign: 'middle' },
-      2: { cellWidth: 28, valign: 'middle' },
-      3: { cellWidth: 38, valign: 'middle' },
-      4: { cellWidth: 18, halign: 'center', valign: 'middle' },
-      5: { cellWidth: 16, halign: 'center', valign: 'middle' },
-      6: { cellWidth: 24, halign: 'right', fontStyle: 'bold', valign: 'middle' }
+    const columnStylesNoFinancial: Record<number, Partial<Styles>> = {
+      0: { cellWidth: 18, halign: 'center', valign: 'middle' }, // Data
+      1: { cellWidth: 26, valign: 'middle' }, // PET
+      2: { cellWidth: 24, valign: 'middle' }, // Veterinário
+      3: { cellWidth: 24, valign: 'middle' }, // Solicit.
+      4: { cellWidth: 44, valign: 'middle' }, // Modalidade
+      5: { cellWidth: 16, halign: 'center', valign: 'middle' }, // Período
+      6: { cellWidth: 15, halign: 'center', valign: 'middle' }, // Máquina
+      7: { cellWidth: 15, halign: 'right', fontStyle: 'bold', valign: 'middle' }, // Valor
     };
 
     autoTable(doc, {
@@ -426,7 +437,9 @@ export const generatePDFReport = async (
         font: pdfFont,
         fontSize: PDF_TABLE_BODY_PT
       },
-      columnStyles: canViewFinancials ? columnStylesFinancial : columnStylesNoFinancial,
+      columnStyles: (canViewFinancials ? columnStylesFinancial : columnStylesNoFinancial) as unknown as {
+        [key: string]: Partial<Styles>;
+      },
       alternateRowStyles: { fillColor: [249, 250, 251] },
       footStyles: {
         fillColor: [COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]],
@@ -438,12 +451,12 @@ export const generatePDFReport = async (
         valign: 'middle',
         cellPadding: 1.5
       },
-      didParseCell: (data) => {
+      didParseCell: (data: CellHookData) => {
         if (data.section !== 'foot') return;
         if (data.column.index === 0) {
           data.cell.styles.halign = 'left';
         }
-        if (canViewFinancials && data.column.index === 7) {
+        if (canViewFinancials && data.column.index === 8) {
           data.cell.styles.textColor = [
             COLORS.primary[0],
             COLORS.primary[1],
@@ -453,10 +466,12 @@ export const generatePDFReport = async (
       }
     });
 
-    currentY = (doc as any).lastAutoTable.finalY + 10;
+    const last = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable;
+    const finalY = typeof last?.finalY === 'number' ? last.finalY : currentY;
+    currentY = finalY + 10;
   });
 
-  const pageCount = (doc as any).internal.getNumberOfPages();
+  const pageCount = (doc as unknown as { internal: { getNumberOfPages: () => number } }).internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
     addFooter(doc, branding, i, pageCount, pdfFont);
@@ -655,11 +670,7 @@ export const generateExamReport = async (
   let respDoc = responsibleVet?.crmv;
 
   if (!respName) {
-    if ((branding as any).responsibleName) {
-       respName = (branding as any).responsibleName;
-    } else {
-       respName = branding.name; 
-    }
+    respName = (branding as BrandingInfo & { responsibleName?: string }).responsibleName || branding.name;
     respDoc = branding.document;
   }
   
@@ -811,7 +822,7 @@ export const generateExamReport = async (
     }
   }
 
-  const pageCount = (doc as any).internal.getNumberOfPages();
+  const pageCount = (doc as unknown as { internal: { getNumberOfPages: () => number } }).internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
     addFooter(doc, branding, i, pageCount, pdfFont);
