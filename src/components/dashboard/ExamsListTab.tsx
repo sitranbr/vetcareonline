@@ -162,8 +162,11 @@ export function ExamsListTab(props: DashboardData) {
                           <td className="p-4 text-gray-600">
                             <div className="flex items-center gap-2">
                               <Stethoscope className="w-3 h-3 text-gray-400" />
-                              <span className="truncate max-w-[150px]" title={props.getVeterinarianName(exam.veterinarianId)}>
-                                {props.getVeterinarianName(exam.veterinarianId)}
+                              <span
+                                className="truncate max-w-[150px]"
+                                title={props.getExamListVeterinarianLabel(exam)}
+                              >
+                                {props.getExamListVeterinarianLabel(exam)}
                               </span>
                             </div>
                           </td>

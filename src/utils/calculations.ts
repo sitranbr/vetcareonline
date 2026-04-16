@@ -62,31 +62,69 @@ export const calculateExamValues = (
 
   let baseValue = 0;
   let baseRepasseProf = 0;
+  let baseRepasseClinic = 0;
   let additionalFee = 0;
-  let additionalRepasseProf = 0;
+  let additionalFeeProf = 0;
+  let additionalFeeClinic = 0;
 
   // Garante que os valores sejam tratados como números para evitar concatenação de strings (NaN ou 0)
   if (rule) {
     baseValue = Number(rule.valor) || 0;
     baseRepasseProf = Number(rule.repasseProfessional) || 0;
+    baseRepasseClinic = Number(rule.repasseClinic) || 0;
     additionalFee = Number(rule.taxaExtra) || 0;
-    additionalRepasseProf = Number(rule.taxaExtraProfessional) || 0;
+    additionalFeeProf = Number(rule.taxaExtraProfessional) || 0;
+    additionalFeeClinic = Number(rule.taxaExtraClinic) || 0;
   }
 
   if (modality === 'RX' || modality === 'RX_FAST') {
     baseValue *= studies;
     baseRepasseProf *= studies;
+    baseRepasseClinic *= studies;
   }
 
-  const totalValue = baseValue + additionalFee;
-  const finalRepasseProf = baseRepasseProf + additionalRepasseProf;
-  
-  // O Líquido da Clínica é SEMPRE a diferença entre o Total e o Líquido do Profissional
-  // Isso garante consistência matemática (Total = Prof + Clínica) independentemente de quem é o dono da máquina
-  let finalRepasseClinic = totalValue - finalRepasseProf;
+  // Taxa extra: se houver split explícito, usa; senão divide 50/50.
+  const hasExplicitExtraSplit = additionalFeeProf > 0 || additionalFeeClinic > 0;
+  const extraProf = hasExplicitExtraSplit ? additionalFeeProf : additionalFee / 2;
+  const extraClinic = hasExplicitExtraSplit ? additionalFeeClinic : additionalFee / 2;
+
+  const totalValue = baseValue + extraProf + extraClinic;
+
+  /**
+   * Lógica de repasse (valores fixos na tabela de preços):
+   *
+   * - **Pagamento via maquininha do Profissional** (`machineOwner === 'professional'`)
+   *   - Total do exame (valor base) entra no Profissional.
+   *   - Profissional repassa para a Clínica o **valor fixo** configurado em `repasseClinic`.
+   *   - `taxaExtra` (se houver) é dividida entre Profissional e Clínica.
+   *
+   * - **Pagamento via maquininha da Clínica** (`machineOwner === 'clinic'`)
+   *   - Total do exame (valor base) entra na Clínica.
+   *   - Clínica repassa para o Profissional o **valor fixo** configurado em `repasseProfessional`.
+   *   - `taxaExtra` (se houver) é dividida entre Profissional e Clínica.
+   *
+   * Observações:
+   * - Repasse é **sempre fixo** (não percentual).
+   * - O repasse fixo é limitado ao `baseValue` (nunca paga mais que o valor base do exame).
+   */
+  let finalRepasseProf: number;
+  let finalRepasseClinic: number;
+
+  if (machineOwner === 'professional') {
+    const fixedToClinic = Math.max(0, Math.min(baseValue, baseRepasseClinic));
+    finalRepasseClinic = fixedToClinic;
+    finalRepasseProf = Math.max(0, baseValue - fixedToClinic) + extraProf;
+    finalRepasseClinic += extraClinic;
+  } else {
+    const fixedToProf = Math.max(0, Math.min(baseValue, baseRepasseProf));
+    finalRepasseProf = fixedToProf;
+    finalRepasseClinic = Math.max(0, baseValue - fixedToProf) + extraClinic;
+    finalRepasseProf += extraProf;
+  }
 
   if (options?.noClinicPartner) {
     finalRepasseClinic = 0;
+    finalRepasseProf = totalValue;
   }
 
   return {

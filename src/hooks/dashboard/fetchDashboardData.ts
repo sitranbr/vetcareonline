@@ -174,16 +174,28 @@ export async function loadDashboardData(
           });
           query = query.eq('clinic_id', loggedUserEntity.id).in('veterinarian_id', teamVetIds);
         } else if (partnerClinic) {
-          const myOwnVetIds = veterinarians.filter((v) => v.profileId === user.ownerId).map((v) => v.id);
-          const internalGuestVetIds = guestVets.map((v) => v.id);
-          const externalVetIds = Array.from(partnerLinkedVetEntityIds);
-          const allMyVetIds = Array.from(
-            new Set([...myOwnVetIds, ...internalGuestVetIds, ...externalVetIds].filter(Boolean)),
-          );
-          if (allMyVetIds.length > 0) {
-            query = query.eq('clinic_id', partnerClinic.id).in('veterinarian_id', allMyVetIds);
+          const rootProfile = clinicPartnerContextProfileId;
+          const partnerVetIds = new Set<string>(Array.from(partnerLinkedVetEntityIds));
+          if (rootProfile) {
+            extraVets.forEach((v) => {
+              if (v.ownerId === rootProfile) partnerVetIds.add(v.id);
+            });
+            guestVets.forEach((v) => {
+              if (v.ownerId === rootProfile) partnerVetIds.add(v.id);
+            });
+          }
+          const vList = Array.from(partnerVetIds).filter((id) => id && id.trim() !== '');
+          const myClinicId = loggedUserEntity.id;
+          const partnerClinicId = partnerClinic.id;
+          if (vList.length > 0) {
+            const inList = vList.join(',');
+            query = query.or(
+              `and(clinic_id.eq.${myClinicId},veterinarian_id.in.(${inList})),` +
+                `and(clinic_id.eq.${partnerClinicId},veterinarian_id.in.(${inList})),` +
+                `and(clinic_id.eq.${myClinicId},veterinarian_id.is.null)`,
+            );
           } else {
-            query = query.eq('id', '00000000-0000-0000-0000-000000000000');
+            query = query.eq('clinic_id', myClinicId);
           }
         } else {
           query = query.eq('clinic_id', loggedUserEntity.id);
@@ -226,7 +238,12 @@ export async function loadDashboardData(
 
   const safeFetch = async (req: PromiseLike<unknown>) => {
     try {
-      return await Promise.resolve(req);
+      const res = (await Promise.resolve(req)) as { data?: unknown; error?: unknown };
+      if (res?.error) {
+        console.warn('Aviso na busca (tabela/RPC):', res.error);
+        return { data: null, error: null };
+      }
+      return res;
     } catch (err) {
       console.error('Aviso na busca:', err);
       return { data: null, error: err };
@@ -235,13 +252,12 @@ export async function loadDashboardData(
 
   const pricePromises: Promise<unknown>[] = [safeFetch(supabase.from('price_rules').select('*'))];
 
-  const isMainSubscriberRoot =
-    !!targetUserId &&
-    (!user?.ownerId || user.ownerId === user.id) &&
-    (isVetTierUser(user) || isClinicTierUser(user));
-  if (isMainSubscriberRoot) {
-    pricePromises.push(safeFetch(supabase.rpc('get_all_prices_bypass_rls', { p_user_id: targetUserId })));
-  }
+  /**
+   * RPC `get_all_prices_bypass_rls` foi desativada no cliente: no Postgres do projeto ela pode falhar com
+   * 42883 (`array_cat(text[], text) does not exist`) se o corpo SQL usar array_cat com escalar.
+   * Corrija a função no Supabase (ex.: usar `array_append(arr, elem)` ou dois arrays em `array_cat`) e
+   * reative a chamada se precisar de bypass de RLS além do `select` em `price_rules`.
+   */
 
   if (
     user?.role === 'reception' ||
@@ -253,17 +269,17 @@ export async function loadDashboardData(
       pricePromises.push(
         safeFetch(supabase.rpc('get_price_rules_for_reception', { p_owner_profile_id: targetUserId })),
       );
-      pricePromises.push(safeFetch(supabase.rpc('get_all_prices_bypass_rls', { p_user_id: targetUserId })));
     }
   }
 
-  const [examsResult, ...priceResults] = (await Promise.all([query, ...pricePromises])) as [
-    { data: Record<string, unknown>[] | null },
-    ...{ data: unknown }[],
-  ];
+  const [examsRaw, ...priceResults] = await Promise.all([query, ...pricePromises]);
+  const examsResult = examsRaw as { data: Record<string, unknown>[] | null; error?: { message?: string } | null };
 
   let exams: Exam[] | null = null;
-  if (examsResult.data) {
+  if (examsResult.error) {
+    console.error('Erro ao carregar exames:', examsResult.error);
+  }
+  if (examsResult.data && Array.isArray(examsResult.data)) {
     exams = examsResult.data.map((e) => mapExamRow(e));
   }
 

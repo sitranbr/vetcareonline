@@ -185,7 +185,9 @@ export function ExamFormTab(props: DashboardData) {
                     <label className="block text-xs font-bold text-gray-500 mb-1">Período</label>
                     <select 
                       value={props.formData.period} 
-                      onChange={e => props.setFormData({...props.formData, period: e.target.value as Period})} 
+                      onChange={e =>
+                        props.setFormData((prev) => ({ ...prev, period: e.target.value as Period }))
+                      } 
                       className="w-full px-3 py-2 border rounded-lg"
                     >
                       {props.availablePeriods.map(p => (
@@ -196,7 +198,16 @@ export function ExamFormTab(props: DashboardData) {
 
                   <div>
                     <label className="block text-xs font-bold text-gray-500 mb-1">Proprietário da Máquina</label>
-                    <select value={props.formData.machineOwner} onChange={e => props.setFormData({...props.formData, machineOwner: e.target.value as MachineOwner})} className="w-full px-3 py-2 border rounded-lg">
+                    <select
+                      value={props.formData.machineOwner}
+                      onChange={e =>
+                        props.setFormData((prev) => ({
+                          ...prev,
+                          machineOwner: e.target.value as MachineOwner,
+                        }))
+                      }
+                      className="w-full px-3 py-2 border rounded-lg"
+                    >
                       <option value="professional">Profissional (Volante)</option>
                       <option value="clinic">Clínica (Fixa)</option>
                     </select>
@@ -316,7 +327,7 @@ export function ExamFormTab(props: DashboardData) {
                   </div>
                   <div className="hidden md:flex items-center justify-center text-gray-400 font-bold text-2xl">=</div>
                   <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex-1 w-full">
-                    <p className="text-xs text-gray-500 mb-1">Líquido Clínica</p>
+                    <p className="text-xs text-gray-500 mb-1">Repasse à Clínica</p>
                     <p className="text-xl font-bold text-gray-800">{formatMoney(props.previewTotals.clinic)}</p>
                   </div>
                 </div>

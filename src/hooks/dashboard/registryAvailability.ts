@@ -9,17 +9,20 @@ export function buildPartnerLinkedVetEntityIds(
   partners: string[] | null | undefined,
   veterinarians: Veterinarian[],
   extraVets: PartnerVetRow[],
+  guestVets: PartnerVetRow[],
 ): Set<string> {
   if (!partners?.length) return new Set<string>();
   const allowed = new Set(partners);
   const out = new Set<string>();
+  const addFromPool = (v: PartnerVetRow) => {
+    if (v.ownerId && allowed.has(v.ownerId)) out.add(v.id);
+    if (v.profileId && allowed.has(v.profileId)) out.add(v.id);
+  };
   veterinarians.forEach((v) => {
     if (v.profileId && allowed.has(v.profileId)) out.add(v.id);
   });
-  extraVets.forEach((v) => {
-    if (v.ownerId && allowed.has(v.ownerId)) out.add(v.id);
-    if (v.profileId && allowed.has(v.profileId)) out.add(v.id);
-  });
+  extraVets.forEach(addFromPool);
+  guestVets.forEach(addFromPool);
   return out;
 }
 

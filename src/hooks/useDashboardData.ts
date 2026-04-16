@@ -52,6 +52,7 @@ import { buildVetClinicNameMaps } from './dashboard/reportPdfMaps';
 import * as examPermissions from './dashboard/examPermissions';
 import {
   brandingFromClinicSettings,
+  resolveExamExecutorDisplayName,
   resolveVeterinarianDisplayName,
   resolveClinicDisplayName,
 } from './dashboard/displayHelpers';
@@ -292,8 +293,8 @@ export function useDashboardData() {
    * Usado em filtros de preÃ§o e no modo parceiro-clÃ­nica convidado; listagem "Minha clÃ­nica" usa `subscriberInternalVetEntityIds`.
    */
   const partnerLinkedVetEntityIds = useMemo(
-    () => buildPartnerLinkedVetEntityIds(user?.partners ?? null, veterinarians, extraVets),
-    [user?.partners, veterinarians, extraVets],
+    () => buildPartnerLinkedVetEntityIds(user?.partners ?? null, veterinarians, extraVets, guestVets),
+    [user?.partners, veterinarians, extraVets, guestVets],
   );
 
   /**
@@ -306,8 +307,9 @@ export function useDashboardData() {
         clinicPartnerContextProfileId ? [clinicPartnerContextProfileId] : null,
         veterinarians,
         extraVets,
+        guestVets,
       ),
-    [clinicPartnerContextProfileId, veterinarians, extraVets],
+    [clinicPartnerContextProfileId, veterinarians, extraVets, guestVets],
   );
 
   /**
@@ -427,7 +429,10 @@ export function useDashboardData() {
       extraVets,
       extraClinics,
       clinicPartnerContextProfileId,
-      partnerLinkedVetEntityIds,
+      partnerLinkedVetEntityIds:
+        clinicPartnerContextProfileId != null
+          ? partnerLinkedVetEntityIdsForSelectedPartner
+          : partnerLinkedVetEntityIds,
     });
     if (!params) return;
 
@@ -456,9 +461,9 @@ export function useDashboardData() {
     veterinarians,
     clinics,
     user,
-    availableClinicsForVet,
     isRootClinicSubscriber,
     partnerLinkedVetEntityIds,
+    partnerLinkedVetEntityIdsForSelectedPartner,
     clinicPartnerContextProfileId,
     guestVets,
     guestClinics,
@@ -540,6 +545,9 @@ export function useDashboardData() {
   const getVeterinarianName = (vetId: string) =>
     resolveVeterinarianDisplayName(vetId, veterinarians, extraVets, guestVets);
 
+  const getExamListVeterinarianLabel = (exam: Exam) =>
+    resolveExamExecutorDisplayName(exam, veterinarians, extraVets, guestVets);
+
   const getClinicName = (clinicId: string) =>
     resolveClinicDisplayName(clinicId, clinics, extraClinics, guestClinics);
 
@@ -569,12 +577,14 @@ export function useDashboardData() {
   }
   if (!effectiveClinicId) effectiveClinicId = '';
 
-  /** Executor para preÃ§o e persistÃªncia: parceiro veterinÃ¡rio usa o cadastro resolvido mesmo se o state atrasar. */
-  const effectiveVeterinarianId = (
-    formData.veterinarianId ||
-    (loggedUserEntity?.type === 'vet' ? loggedUserEntity.id : '') ||
-    ''
-  ).trim();
+  /**
+   * Executor salvo no exame: sessão veterinário deve gravar sempre o próprio `veterinarians.id`
+   * (não `formData.veterinarianId`, que pode vir de edição de exame de outro executor ou estado antigo).
+   */
+  const effectiveVeterinarianId =
+    loggedUserEntity?.type === 'vet' && loggedUserEntity.id
+      ? String(loggedUserEntity.id).trim()
+      : (formData.veterinarianId || '').trim();
 
   const effectiveOwnerVetId = useMemo(() => {
     if (!effectiveVeterinarianId) return '';
@@ -826,7 +836,10 @@ export function useDashboardData() {
       requesterCrmv: exam.requesterCrmv || '',
       period: exam.period,
       machineOwner: exam.machineOwner,
-      veterinarianId: exam.veterinarianId,
+      veterinarianId:
+        loggedUserEntity?.type === 'vet' && loggedUserEntity?.id
+          ? loggedUserEntity.id
+          : exam.veterinarianId,
       clinicId: exam.clinicId,
       items: [{ id: '1', modality: exam.modality, studies: exam.studies || 1, studyDescription: exam.studyDescription, rxStudies: exam.rxStudies || [] }]
     });
@@ -961,12 +974,13 @@ export function useDashboardData() {
         examListDateTo,
         isRootClinicSubscriber,
         clinicPartnerContextProfileId,
+        partnerContextOptions,
         clinics,
         guestClinics,
         extraClinics,
         myClinicEntityId,
         partnerContextTeamForList,
-        partnerLinkedVetEntityIdsForSelectedPartner,
+        partnerLinkedVetEntityIds: partnerLinkedVetEntityIdsForSelectedPartner,
         veterinarians,
         guestVets,
         extraVets,
@@ -979,6 +993,7 @@ export function useDashboardData() {
       examListDateTo,
       isRootClinicSubscriber,
       clinicPartnerContextProfileId,
+      partnerContextOptions,
       clinics,
       guestClinics,
       extraClinics,
@@ -1220,6 +1235,7 @@ export function useDashboardData() {
     examCanDeleteRow,
     getBrandingForExam,
     getVeterinarianName,
+    getExamListVeterinarianLabel,
     getClinicName,
     resetForm,
     effectiveClinicId,

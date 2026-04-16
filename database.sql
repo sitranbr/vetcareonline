@@ -1,0 +1,95 @@
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
+CREATE TABLE public.clinics (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  name text NOT NULL,
+  document text,
+  address text,
+  phone text,
+  email text,
+  logo_url text,
+  is_default boolean DEFAULT false,
+  created_at timestamp with time zone DEFAULT now(),
+  profile_id uuid,
+  responsible_name text,
+  CONSTRAINT clinics_pkey PRIMARY KEY (id),
+  CONSTRAINT clinics_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.exams (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  date date NOT NULL,
+  pet_name text NOT NULL,
+  modality text NOT NULL,
+  period text NOT NULL,
+  studies integer DEFAULT 1,
+  study_description text,
+  rx_studies jsonb DEFAULT '[]'::jsonb,
+  veterinarian_id text NOT NULL,
+  clinic_id text,
+  machine_owner text CHECK (machine_owner = ANY (ARRAY['professional'::text, 'clinic'::text])),
+  total_value numeric DEFAULT 0,
+  repasse_professional numeric DEFAULT 0,
+  repasse_clinic numeric DEFAULT 0,
+  status text DEFAULT 'pending'::text,
+  report_content text,
+  report_images ARRAY DEFAULT ARRAY[]::text[],
+  created_at timestamp with time zone DEFAULT now(),
+  requester_vet text,
+  requester_crmv text,
+  species text,
+  CONSTRAINT exams_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.price_rules (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  clinic_id text NOT NULL,
+  modality text NOT NULL,
+  period text NOT NULL,
+  label text,
+  period_label text,
+  valor numeric DEFAULT 0,
+  repasse_professional numeric DEFAULT 0,
+  repasse_clinic numeric DEFAULT 0,
+  taxa_extra numeric DEFAULT 0,
+  taxa_extra_professional numeric DEFAULT 0,
+  taxa_extra_clinic numeric DEFAULT 0,
+  observacoes text,
+  created_at timestamp with time zone DEFAULT now(),
+  owner_id uuid,
+  veterinarian_id text,
+  CONSTRAINT price_rules_pkey PRIMARY KEY (id),
+  CONSTRAINT price_rules_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.profiles (
+  id uuid NOT NULL,
+  email text NOT NULL,
+  name text,
+  role text CHECK (role = ANY (ARRAY['admin'::text, 'owner'::text, 'vet'::text, 'clinic'::text, 'reception'::text])),
+  level integer,
+  permissions jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  owner_id uuid,
+  partners ARRAY DEFAULT '{}'::text[],
+  signature_url text,
+  access_blocked boolean NOT NULL DEFAULT false,
+  CONSTRAINT profiles_pkey PRIMARY KEY (id),
+  CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id),
+  CONSTRAINT profiles_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.veterinarians (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  name text NOT NULL,
+  crmv text,
+  document text,
+  address text,
+  phone text,
+  email text,
+  logo_url text,
+  is_default boolean DEFAULT false,
+  linked_clinic_ids ARRAY DEFAULT ARRAY[]::text[],
+  created_at timestamp with time zone DEFAULT now(),
+  profile_id uuid,
+  CONSTRAINT veterinarians_pkey PRIMARY KEY (id),
+  CONSTRAINT veterinarians_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES public.profiles(id)
+);

@@ -13,6 +13,8 @@ export function deriveFilteredExamsForList(params: {
   examListDateTo: string;
   isRootClinicSubscriber: boolean;
   clinicPartnerContextProfileId: string | null;
+  /** Metadados do dropdown (perfil do parceiro); usado se não houver linha em `clinics` para o UUID. */
+  partnerContextOptions: { profileId: string; name: string; role?: string }[];
   clinics: { id: string; profileId?: string | null }[];
   guestClinics: { id: string; profileId: string }[];
   extraClinics: { id: string; profileId: string }[];
@@ -32,6 +34,7 @@ export function deriveFilteredExamsForList(params: {
     examListDateTo,
     isRootClinicSubscriber,
     clinicPartnerContextProfileId,
+    partnerContextOptions,
     clinics,
     guestClinics,
     extraClinics,
@@ -42,6 +45,8 @@ export function deriveFilteredExamsForList(params: {
     guestVets,
     extraVets,
   } = params;
+
+  const linkedVetIds = partnerLinkedVetEntityIds ?? new Set<string>();
 
   let from = examListDateFrom;
   let to = examListDateTo;
@@ -70,13 +75,22 @@ export function deriveFilteredExamsForList(params: {
           guestClinics,
           extraClinics,
         );
-        const isPartnerClinicOrg = partnerClinicEntityId !== null;
+        const opt = partnerContextOptions.find((o) => o.profileId === clinicPartnerContextProfileId);
+        const roleLower = String(opt?.role ?? '').toLowerCase();
+        /**
+         * Parceiro "organização" (clínica / time) vs. um veterinário avulso no dropdown:
+         * - há `clinics.id` resolvido para o perfil; ou
+         * - `profiles.role` não é explicitamente `vet` (inclui vazio, subscriber, owner, clinic, etc.).
+         * Só o caso `vet` + sem linha em `clinics` cai no ramo de parceiro-vet isolado.
+         */
+        const isPartnerClinicOrg = partnerClinicEntityId !== null || roleLower !== 'vet';
         if (isPartnerClinicOrg) {
           if (!myClinicEntityId) return false;
           const vid = (e.veterinarianId ?? '').toString().trim();
-          const atPartnerFacility = e.clinicId === partnerClinicEntityId;
+          const atPartnerFacility =
+            partnerClinicEntityId != null && e.clinicId === partnerClinicEntityId;
           const executorLinkedToPartner =
-            vid &&
+            !!vid &&
             (executorMatchesPartnerRoot(
               e.veterinarianId,
               clinicPartnerContextProfileId,
@@ -85,8 +99,13 @@ export function deriveFilteredExamsForList(params: {
               extraVets,
               partnerContextTeamForList,
             ) ||
-              partnerLinkedVetEntityIds.has(vid));
-          const atMyFacilityWithPartnerTeam = e.clinicId === myClinicEntityId && executorLinkedToPartner;
+              linkedVetIds.has(vid) ||
+              (!!partnerContextTeamForList && partnerContextTeamForList.has(vid)));
+          // Sem executor no registro: ainda mostrar na unidade ao filtrar parceiro clínica (dados legados / UI N/A).
+          const unassignedAtMyFacility = !vid && e.clinicId === myClinicEntityId;
+          const atMyFacilityWithPartnerTeam =
+            e.clinicId === myClinicEntityId &&
+            (executorLinkedToPartner || unassignedAtMyFacility);
           if (!atPartnerFacility && !atMyFacilityWithPartnerTeam) return false;
         } else {
           if (e.clinicId !== myClinicEntityId) return false;

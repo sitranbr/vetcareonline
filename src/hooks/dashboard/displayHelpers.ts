@@ -22,8 +22,24 @@ export function resolveVeterinarianDisplayName(
 ): string {
   if (!vetId) return 'N/A';
   const allVets = [...veterinarians, ...extraVets, ...guestVets];
-  const vet = allVets.find((v) => v.id === vetId || v.profileId === vetId);
-  return vet ? vet.name : 'N/A';
+  const byEntityId = allVets.find((v) => v.id === vetId);
+  if (byEntityId) return byEntityId.name;
+  const byProfileId = allVets.find((v) => String(v.profileId ?? '').trim() === vetId);
+  return byProfileId ? byProfileId.name : 'N/A';
+}
+
+/**
+ * Coluna "Veterinário" = executor (`veterinarian_id`), não o texto livre "requisitante externo"
+ * (`requester_vet` — quem pediu o exame em outra clínica pode ser outra pessoa).
+ */
+export function resolveExamExecutorDisplayName(
+  exam: { veterinarianId?: string | null; requesterVet?: string | null },
+  veterinarians: Veterinarian[],
+  extraVets: NamedPartnerRow[],
+  guestVets: NamedPartnerRow[],
+): string {
+  const vid = (exam.veterinarianId ?? '').toString().trim();
+  return resolveVeterinarianDisplayName(vid, veterinarians, extraVets, guestVets);
 }
 
 export function resolveClinicDisplayName(
