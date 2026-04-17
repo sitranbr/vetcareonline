@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import autoTable, { type CellHookData, type Styles } from 'jspdf-autotable';
+import autoTable, { type CellHookData, type Styles, type HookData } from 'jspdf-autotable';
 import { Exam, User, BrandingInfo, Veterinarian } from '../types';
 import { formatMoney, getModalityLabel, getPeriodLabel } from './calculations';
 import { format, parseISO } from 'date-fns';
@@ -18,18 +18,18 @@ const COLORS = {
 const PDF_FONT_FALLBACK = 'helvetica';
 const PDF_FONT_INTER = 'Inter';
 
-const PDF_TABLE_BODY_PT = 7;
+const PDF_TABLE_BODY_PT = 6.5;
 const PDF_TABLE_HEAD_PT = 7.5;
-/** Linha SUBTOTAL / totais: menor para evitar quebra em células estreitas. */
+/** Linha SUBTOTAL / totais: alinhada ao corpo da tabela. */
 const PDF_TABLE_FOOT_PT = 7;
 
 /** Textos fora da tabela no relatório financeiro. */
-const PDF_REPORT_META_PT = 8;
-const PDF_REPORT_META_SIDE_PT = 7;
-const PDF_REPORT_SUMMARY_TITLE_PT = 9;
+const PDF_REPORT_META_PT = 9;
+const PDF_REPORT_META_SIDE_PT = 8;
+const PDF_REPORT_SUMMARY_TITLE_PT = 10;
 /** Grade 2×3 do resumo (rótulos longos; evita sobreposição). */
-const PDF_REPORT_SUMMARY_GRID_PT = 7.5;
-const PDF_REPORT_GROUP_TITLE_PT = 9;
+const PDF_REPORT_SUMMARY_GRID_PT = 8.5;
+const PDF_REPORT_GROUP_TITLE_PT = 10;
 
 function arrayBufferToBinaryString(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -85,17 +85,92 @@ function pdfLiquidoClinicaColumn(exam: Exam): number {
   return Math.max(0, exam.totalValue - exam.repasseProfessional);
 }
 
-/** Repasse devido à clínica quando o pagamento é na máquina do profissional (conforme tabela / valores do exame). */
-function pdfRepasseParaClinicaProfissional(exam: Exam): number {
-  if (exam.machineOwner !== 'professional') return 0;
-  const stored = Number(exam.repasseClinic);
-  if (!Number.isNaN(stored) && stored > 0) return stored;
-  return Math.max(0, exam.totalValue - exam.repasseProfessional);
-}
-
 /** Valor total faturado no PDV da clínica (máquina da clínica). */
 function pdfFaturadoPelaClinica(exam: Exam): number {
   return exam.machineOwner === 'clinic' ? exam.totalValue : 0;
+}
+
+/** Exibe apenas primeiro e último nome do solicitante (coluna Solicit. do PDF). */
+function pdfSolicitantePrimeiroUltimo(raw: string | undefined): string {
+  const s = (raw ?? '').trim();
+  if (!s || s === '-') return '-';
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return parts[0] ?? '-';
+  if (parts.length === 2) return `${parts[0]} ${parts[1]}`;
+  return `${parts[0]} ${parts[parts.length - 1]}`;
+}
+
+/** Bloco único PET / solicitante / modalidade / veterinário (laudo) para coluna Informações no PDF. */
+function pdfInformacoesBlock(
+  petName: string | undefined,
+  requesterShort: string,
+  modalityText: string,
+  laudoVetName: string,
+): string {
+  const pet = (petName ?? '').trim() || '—';
+  const sol =
+    requesterShort.trim() && requesterShort !== '-' ? requesterShort.trim() : '—';
+  const exame = modalityText.replace(/\s*\n\s*/g, ' ').trim() || '—';
+  const laudo = (laudoVetName ?? '').trim() || '—';
+  return `Pet: ${pet}\nVet. Solicit.: ${sol}\nExame: ${exame}\nLaudo: ${laudo}`;
+}
+
+const PDF_EXAM_TABLE_WIDTH = 182;
+const PDF_EXAM_FOOT_ROW_H = 6.5;
+/** Borda direita das colunas de valores (7–9) em relação ao início da tabela. */
+const PDF_EXAM_FIN_VALUE_RIGHT = [142, 162, 182] as const;
+/**
+ * Margens da tabela de exames no PDF:
+ * - top: afasta cabeçalho da tabela do topo em páginas de continuação.
+ * - bottom: reserva espaço para SUBTOTAL + TOTAL (até 2 linhas desenhadas em didDrawPage) + rodapé do documento (linha em y≈h−15).
+ * Valores maiores = menos linhas por página, sem sobreposição ao rodapé.
+ */
+const PDF_EXAM_TABLE_MARGIN = { left: 14, right: 14, top: 20, bottom: 30 } as const;
+
+function drawPdfExamTableFooterRow(
+  doc: jsPDF,
+  fontName: string,
+  tableLeft: number,
+  topY: number,
+  label: 'SUBTOTAL' | 'TOTAL',
+  totals: { val: number; prof?: number; clin?: number },
+  canViewFinancials: boolean,
+) {
+  const isTotal = label === 'TOTAL';
+  if (isTotal) {
+    doc.setFillColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+  } else {
+    doc.setFillColor(COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]);
+  }
+  doc.rect(tableLeft, topY, PDF_EXAM_TABLE_WIDTH, PDF_EXAM_FOOT_ROW_H, 'F');
+  doc.setFont(fontName, 'bold');
+  doc.setFontSize(PDF_TABLE_FOOT_PT);
+  const textY = topY + 4.5;
+  if (isTotal) {
+    doc.setTextColor(255, 255, 255);
+    doc.text(label, tableLeft + 2, textY);
+    if (canViewFinancials) {
+      doc.text(formatMoney(totals.val), tableLeft + PDF_EXAM_FIN_VALUE_RIGHT[0], textY, { align: 'right' });
+      doc.setTextColor(COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]);
+      doc.text(formatMoney(totals.prof ?? 0), tableLeft + PDF_EXAM_FIN_VALUE_RIGHT[1], textY, { align: 'right' });
+      doc.setTextColor(255, 255, 255);
+      doc.text(formatMoney(totals.clin ?? 0), tableLeft + PDF_EXAM_FIN_VALUE_RIGHT[2], textY, { align: 'right' });
+    } else {
+      doc.text(formatMoney(totals.val), tableLeft + PDF_EXAM_TABLE_WIDTH, textY, { align: 'right' });
+    }
+  } else {
+    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+    doc.text(label, tableLeft + 2, textY);
+    if (canViewFinancials) {
+      doc.text(formatMoney(totals.val), tableLeft + PDF_EXAM_FIN_VALUE_RIGHT[0], textY, { align: 'right' });
+      doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
+      doc.text(formatMoney(totals.prof ?? 0), tableLeft + PDF_EXAM_FIN_VALUE_RIGHT[1], textY, { align: 'right' });
+      doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
+      doc.text(formatMoney(totals.clin ?? 0), tableLeft + PDF_EXAM_FIN_VALUE_RIGHT[2], textY, { align: 'right' });
+    } else {
+      doc.text(formatMoney(totals.val), tableLeft + PDF_EXAM_TABLE_WIDTH, textY, { align: 'right' });
+    }
+  }
 }
 
 // Agora aceita BrandingInfo (Vet ou Clínica) em vez de ClinicSettings global
@@ -274,7 +349,8 @@ export const generatePDFReport = async (
   const totalExams = reportExams.length;
   const totalValue = reportExams.reduce((acc, curr) => acc + curr.totalValue, 0);
   const totalRepasseAndre = reportExams.reduce((acc, curr) => acc + curr.repasseProfessional, 0);
-  const totalRepasseParaClinica = reportExams.reduce((acc, curr) => acc + pdfRepasseParaClinicaProfissional(curr), 0);
+  /** Mesma base da coluna "Rep. à Clín." e do TOTAL do PDF (soma de `pdfLiquidoClinicaColumn`). */
+  const totalRepasseClinicaColuna = reportExams.reduce((acc, curr) => acc + pdfLiquidoClinicaColumn(curr), 0);
   const totalFaturadoPelaClinica = reportExams.reduce((acc, curr) => acc + pdfFaturadoPelaClinica(curr), 0);
   const totalISS = totalValue * 0.05;
 
@@ -332,7 +408,7 @@ export const generatePDFReport = async (
     drawSummaryLabelValue(summaryCol.a, row2Y, 'Líq. Profissional: ', formatMoney(totalRepasseAndre), {
       valueColor: [COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]],
     });
-    drawSummaryLabelValue(summaryCol.b, row2Y, 'Repasse à clínica: ', formatMoney(totalRepasseParaClinica), {
+    drawSummaryLabelValue(summaryCol.b, row2Y, 'Rep. à Clín.: ', formatMoney(totalRepasseClinicaColuna), {
       valueColor: [COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]],
     });
     drawSummaryLabelValue(summaryCol.c, row2Y, 'Faturado pela clínica: ', formatMoney(totalFaturadoPelaClinica), {
@@ -384,7 +460,7 @@ export const generatePDFReport = async (
   let currentY = startY + boxHeight + 10;
 
   /** Rótulos curtos para caber melhor no cabeçalho com fonte reduzida. */
-  const tableHeaders = ['Data', 'PET', 'Veterinário', 'Solicit.', 'Modalidade', 'Período', 'Máquina', 'Valor'];
+  const tableHeaders = ['Data', 'Informações', 'Período', 'Máquina', 'Valor'];
   if (canViewFinancials) tableHeaders.push('Líq. Prof.', 'Rep. à Clín.');
 
   groups.forEach(group => {
@@ -408,14 +484,18 @@ export const generatePDFReport = async (
       const vetId = (exam.veterinarianId || '').toString().trim();
       const vetName = (options?.vetNames && vetId ? options.vetNames[vetId] : '') || 'Não Identificado';
 
+      const informacoes = pdfInformacoesBlock(
+        exam.petName,
+        pdfSolicitantePrimeiroUltimo(exam.requesterVet),
+        modalityText,
+        vetName,
+      );
+
       const row = [
         format(parseISO(exam.date), 'dd/MM/yyyy'),
-        exam.petName,
-        vetName,
-        exam.requesterVet || '-',
-        modalityText,
+        informacoes,
         getPeriodLabel(exam.period),
-        exam.machineOwner === 'professional' ? 'Profissional' : 'Clínica',
+        exam.machineOwner === 'professional' ? 'Prof.' : 'Clínica',
         formatMoney(exam.totalValue),
       ];
 
@@ -426,48 +506,46 @@ export const generatePDFReport = async (
       return row;
     });
 
-    const subTotalValue = group.exams.reduce((acc, curr) => acc + curr.totalValue, 0);
-    const subTotalProf = group.exams.reduce((acc, curr) => acc + curr.repasseProfessional, 0);
-    const subTotalClinic = group.exams.reduce((acc, curr) => acc + pdfLiquidoClinicaColumn(curr), 0);
+    const grandTotalValue = group.exams.reduce((acc, curr) => acc + curr.totalValue, 0);
+    const grandTotalProf = group.exams.reduce((acc, curr) => acc + curr.repasseProfessional, 0);
+    const grandTotalClinic = group.exams.reduce((acc, curr) => acc + pdfLiquidoClinicaColumn(curr), 0);
 
-    const footRow = canViewFinancials 
-      ? [[ 'SUBTOTAL', '', '', '', '', '', '', formatMoney(subTotalValue), formatMoney(subTotalProf), formatMoney(subTotalClinic) ]] 
-      : [[ 'SUBTOTAL', '', '', '', '', '', '', formatMoney(subTotalValue) ]];
+    const pageTotals = new Map<number, { val: number; prof: number; clin: number }>();
+    const pageRowCounts = new Map<number, number>();
+
+    const bumpPage = (pn: number) => {
+      if (!pageTotals.has(pn)) pageTotals.set(pn, { val: 0, prof: 0, clin: 0 });
+    };
 
     const columnStylesFinancial: Record<number, Partial<Styles>> = {
       0: { cellWidth: 16, halign: 'center', valign: 'middle' }, // Data
-      1: { cellWidth: 20, valign: 'middle' }, // PET
-      2: { cellWidth: 20, valign: 'middle' }, // Veterinário
-      3: { cellWidth: 18, valign: 'middle' }, // Solicit.
-      4: { cellWidth: 25, valign: 'middle' }, // Modalidade
-      5: { cellWidth: 14, halign: 'center', valign: 'middle' }, // Período
-      6: { cellWidth: 14, halign: 'center', valign: 'middle' }, // Máquina
-      7: { cellWidth: 15, halign: 'right', fontStyle: 'bold', valign: 'middle' }, // Valor
-      8: { cellWidth: 20, halign: 'right', valign: 'middle' }, // Líq. Prof.
-      9: { cellWidth: 20, halign: 'right', valign: 'middle' }, // Líq. Clín.
+      1: { cellWidth: 83, halign: 'left', valign: 'top' }, // Informações (PET, solicitante, exame, laudo)
+      2: { cellWidth: 14, halign: 'center', valign: 'middle' }, // Período
+      3: { cellWidth: 14, halign: 'center', valign: 'middle' }, // Máquina
+      4: { cellWidth: 15, halign: 'right', fontStyle: 'bold', valign: 'middle' }, // Valor
+      5: { cellWidth: 20, halign: 'right', valign: 'middle' }, // Líq. Prof.
+      6: { cellWidth: 20, halign: 'right', valign: 'middle' }, // Rep. à Clín.
     };
     const columnStylesNoFinancial: Record<number, Partial<Styles>> = {
       0: { cellWidth: 18, halign: 'center', valign: 'middle' }, // Data
-      1: { cellWidth: 26, valign: 'middle' }, // PET
-      2: { cellWidth: 24, valign: 'middle' }, // Veterinário
-      3: { cellWidth: 24, valign: 'middle' }, // Solicit.
-      4: { cellWidth: 44, valign: 'middle' }, // Modalidade
-      5: { cellWidth: 16, halign: 'center', valign: 'middle' }, // Período
-      6: { cellWidth: 15, halign: 'center', valign: 'middle' }, // Máquina
-      7: { cellWidth: 15, halign: 'right', fontStyle: 'bold', valign: 'middle' }, // Valor
+      1: { cellWidth: 118, halign: 'left', valign: 'top' }, // Informações
+      2: { cellWidth: 16, halign: 'center', valign: 'middle' }, // Período
+      3: { cellWidth: 15, halign: 'center', valign: 'middle' }, // Máquina
+      4: { cellWidth: 15, halign: 'right', fontStyle: 'bold', valign: 'middle' }, // Valor
     };
 
     autoTable(doc, {
       startY: currentY,
       head: [tableHeaders],
       body: tableBody,
-      foot: footRow,
+      showFoot: 'never',
       theme: 'grid',
       tableWidth: 182,
+      margin: { ...PDF_EXAM_TABLE_MARGIN },
       styles: {
         font: pdfFont,
         fontSize: PDF_TABLE_BODY_PT,
-        cellPadding: 2,
+        cellPadding: 1.5,
         textColor: COLORS.text,
         lineColor: [220, 220, 220],
         lineWidth: 0.1,
@@ -482,7 +560,7 @@ export const generatePDFReport = async (
         fontStyle: 'bold',
         halign: 'center',
         valign: 'middle',
-        cellPadding: 2.5
+        cellPadding: 1.5
       },
       bodyStyles: {
         font: pdfFont,
@@ -492,29 +570,46 @@ export const generatePDFReport = async (
         [key: string]: Partial<Styles>;
       },
       alternateRowStyles: { fillColor: [249, 250, 251] },
-      footStyles: {
-        fillColor: [COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]],
-        textColor: [COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]] as [number, number, number],
-        font: pdfFont,
-        fontSize: PDF_TABLE_FOOT_PT,
-        fontStyle: 'bold',
-        halign: 'right',
-        valign: 'middle',
-        cellPadding: 1.5
+      didDrawCell: (data: CellHookData) => {
+        if (data.section !== 'body' || data.column.index !== 0) return;
+        if (data.row.index < 0) return;
+        const exam = group.exams[data.row.index];
+        if (!exam) return;
+        const pn = data.pageNumber;
+        bumpPage(pn);
+        const t = pageTotals.get(pn)!;
+        t.val += exam.totalValue;
+        t.prof += exam.repasseProfessional;
+        t.clin += pdfLiquidoClinicaColumn(exam);
+        pageRowCounts.set(pn, (pageRowCounts.get(pn) ?? 0) + 1);
       },
-      didParseCell: (data: CellHookData) => {
-        if (data.section !== 'foot') return;
-        if (data.column.index === 0) {
-          data.cell.styles.halign = 'left';
+      didDrawPage: (data: HookData) => {
+        const cursor = data.cursor;
+        if (!cursor) return;
+        const ml = data.settings.margin.left;
+        const pn = data.pageNumber;
+        const rowsThisPage = pageRowCounts.get(pn) ?? 0;
+        if (rowsThisPage === 0) return;
+
+        const agg = pageTotals.get(pn) ?? { val: 0, prof: 0, clin: 0 };
+        drawPdfExamTableFooterRow(doc, pdfFont, ml, cursor.y, 'SUBTOTAL', agg, canViewFinancials);
+        cursor.y += PDF_EXAM_FOOT_ROW_H;
+
+        let rowsAccounted = 0;
+        for (let i = 1; i <= pn; i++) rowsAccounted += pageRowCounts.get(i) ?? 0;
+        if (rowsAccounted !== group.exams.length) return;
+
+        if (canViewFinancials) {
+          drawPdfExamTableFooterRow(doc, pdfFont, ml, cursor.y, 'TOTAL', {
+            val: grandTotalValue,
+            prof: grandTotalProf,
+            clin: grandTotalClinic,
+          }, true);
+        } else {
+          drawPdfExamTableFooterRow(doc, pdfFont, ml, cursor.y, 'TOTAL', { val: grandTotalValue }, false);
         }
-        if (canViewFinancials && data.column.index === 8) {
-          data.cell.styles.textColor = [
-            COLORS.primary[0],
-            COLORS.primary[1],
-            COLORS.primary[2]
-          ] as [number, number, number];
-        }
-      }
+        cursor.y += PDF_EXAM_FOOT_ROW_H;
+      },
     });
 
     const last = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable;
@@ -708,7 +803,9 @@ export const generateExamReport = async (
   doc.setFont(pdfFont, 'bold');
   doc.text('Solicitante:', labelX2, currentY);
   doc.setFont(pdfFont, 'normal');
-  let reqText = exam.requesterVet || 'Não informado';
+  let reqText = exam.requesterVet?.trim()
+    ? pdfSolicitantePrimeiroUltimo(exam.requesterVet)
+    : 'Não informado';
   if (exam.requesterCrmv) reqText += ` (${exam.requesterCrmv})`;
   doc.text(reqText, valueX2, currentY);
 
