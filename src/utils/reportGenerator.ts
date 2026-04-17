@@ -1,10 +1,11 @@
 import jsPDF from 'jspdf';
 import autoTable, { type CellHookData, type Styles, type HookData } from 'jspdf-autotable';
 import { Exam, User, BrandingInfo, Veterinarian } from '../types';
-import { formatMoney, getModalityLabel, getPeriodLabel } from './calculations';
+import { calculateExamValues, formatMoney, getModalityLabel, getPeriodLabel } from './calculations';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '../lib/supabase';
+import type { PriceRule } from '../types';
 
 const COLORS = {
   primary: [90, 143, 145] as [number, number, number], // #5A8F91 (Petcare Default)
@@ -76,18 +77,16 @@ const loadImage = (url: string): Promise<HTMLImageElement> => {
 };
 
 /**
- * Coluna "Líq. Clín." no PDF: com máquina do profissional exibe 0 (sem repasse ao estabelecimento nesta coluna).
- * Com máquina da clínica, o líquido da clínica é total − profissional (mesma base do resumo da lista), evitando
- * R$ 0,00 quando `repasse_clinic` no banco está zerado ou desatualizado.
+ * Coluna "Rep. da Clín." na listagem do relatório:
+ * - Só é informada quando a cobrança foi pela máquina da clínica.
+ * - Quando a cobrança foi pela máquina do profissional, exibe 0 (conforme a semântica do relatório).
+ *
+ * Regra de negócio: representa o valor que **sai da clínica para o profissional**.
+ * Logo, quando a máquina é da clínica, o valor exibido é `repasseProfessional`.
  */
-function pdfLiquidoClinicaColumn(exam: Exam): number {
-  if (exam.machineOwner === 'professional') return 0;
-  return Math.max(0, exam.totalValue - exam.repasseProfessional);
-}
-
-/** Valor total faturado no PDV da clínica (máquina da clínica). */
-function pdfFaturadoPelaClinica(exam: Exam): number {
-  return exam.machineOwner === 'clinic' ? exam.totalValue : 0;
+function pdfRepasseClinicaColumn(exam: Exam): number {
+  if (exam.machineOwner !== 'clinic') return 0;
+  return Number(exam.repasseProfessional) || 0;
 }
 
 /** Exibe apenas primeiro e último nome do solicitante (coluna Solicit. do PDF). */
@@ -117,8 +116,29 @@ function pdfInformacoesBlock(
 
 const PDF_EXAM_TABLE_WIDTH = 182;
 const PDF_EXAM_FOOT_ROW_H = 6.5;
-/** Borda direita das colunas de valores (7–9) em relação ao início da tabela. */
-const PDF_EXAM_FIN_VALUE_RIGHT = [142, 162, 182] as const;
+/**
+ * Larguras das colunas da tabela de exames (financeiro, 8 colunas). Soma = PDF_EXAM_TABLE_WIDTH.
+ * Usado para alinhar SUBTOTAL/TOTAL com as células do autoTable.
+ */
+const PDF_EXAM_FIN_COL_WIDTHS = [16, 70, 12, 12, 16, 18, 18, 20] as const;
+
+/** Borda direita (mm desde o início da tabela) das colunas Valor, Líq. Prof., Rep. da Clín., Líq. Clín. */
+const PDF_EXAM_FIN_VALUE_RIGHT: readonly [number, number, number, number] = (() => {
+  const w = PDF_EXAM_FIN_COL_WIDTHS;
+  const r4 = w[0] + w[1] + w[2] + w[3] + w[4];
+  const r5 = r4 + w[5];
+  const r6 = r5 + w[6];
+  const r7 = r6 + w[7];
+  return [r4, r5, r6, r7];
+})();
+
+/**
+ * Coluna "Líq. Clín.": parcela da clínica conforme tabela de preços / persistido em `repasse_clinic`
+ * (ex.: Repasse Clínica no formulário), em qualquer máquina.
+ */
+function pdfLiquidoClinicaColumn(exam: Exam): number {
+  return Math.max(0, Number(exam.repasseClinic) || 0);
+}
 /**
  * Margens da tabela de exames no PDF:
  * - top: afasta cabeçalho da tabela do topo em páginas de continuação.
@@ -133,7 +153,7 @@ function drawPdfExamTableFooterRow(
   tableLeft: number,
   topY: number,
   label: 'SUBTOTAL' | 'TOTAL',
-  totals: { val: number; prof?: number; clin?: number },
+  totals: { val: number; prof?: number; clin?: number; liqClin?: number },
   canViewFinancials: boolean,
 ) {
   const isTotal = label === 'TOTAL';
@@ -155,6 +175,7 @@ function drawPdfExamTableFooterRow(
       doc.text(formatMoney(totals.prof ?? 0), tableLeft + PDF_EXAM_FIN_VALUE_RIGHT[1], textY, { align: 'right' });
       doc.setTextColor(255, 255, 255);
       doc.text(formatMoney(totals.clin ?? 0), tableLeft + PDF_EXAM_FIN_VALUE_RIGHT[2], textY, { align: 'right' });
+      doc.text(formatMoney(totals.liqClin ?? 0), tableLeft + PDF_EXAM_FIN_VALUE_RIGHT[3], textY, { align: 'right' });
     } else {
       doc.text(formatMoney(totals.val), tableLeft + PDF_EXAM_TABLE_WIDTH, textY, { align: 'right' });
     }
@@ -167,6 +188,7 @@ function drawPdfExamTableFooterRow(
       doc.text(formatMoney(totals.prof ?? 0), tableLeft + PDF_EXAM_FIN_VALUE_RIGHT[1], textY, { align: 'right' });
       doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
       doc.text(formatMoney(totals.clin ?? 0), tableLeft + PDF_EXAM_FIN_VALUE_RIGHT[2], textY, { align: 'right' });
+      doc.text(formatMoney(totals.liqClin ?? 0), tableLeft + PDF_EXAM_FIN_VALUE_RIGHT[3], textY, { align: 'right' });
     } else {
       doc.text(formatMoney(totals.val), tableLeft + PDF_EXAM_TABLE_WIDTH, textY, { align: 'right' });
     }
@@ -313,6 +335,7 @@ export const generatePDFReport = async (
     vetNames?: Record<string, string>;
     clinicNames?: Record<string, string>;
     partnerLabel?: string;
+    priceRules?: PriceRule[];
   }
 ) => {
   const reportExams = [...exams].sort((a, b) => {
@@ -339,24 +362,47 @@ export const generatePDFReport = async (
   doc.text(`Gerado por: ${user.name}`, 14, 42);
   doc.text(`Data de Emissão: ${today}`, 14, 47);
   doc.text(`Período: ${periodStart} até ${periodEnd}`, 14, 52);
-  doc.text(`Filtro: ${options?.partnerLabel || 'Geral (Todos)'}`, 14, 57);
+  doc.text(`${options?.partnerLabel || 'Geral (Todos)'}`, 14, 57);
   
   doc.setFontSize(PDF_REPORT_META_SIDE_PT);
   doc.setTextColor(150);
   doc.text(`${branding.name} | ${branding.document || ''}`, 195, 42, { align: 'right' });
   doc.text(branding.address || '', 195, 47, { align: 'right' });
 
+  const priceRulesForExtra = options?.priceRules ?? [];
+  const extraByExamId = new Map<string, number>();
+  const EPS = 0.02;
+  if (priceRulesForExtra.length > 0) {
+    reportExams.forEach((exam) => {
+      const studies = exam.studies || 1;
+      const values = calculateExamValues(
+        exam.modality,
+        exam.period,
+        exam.machineOwner,
+        priceRulesForExtra,
+        studies,
+        exam.clinicId,
+        exam.studyDescription,
+        exam.veterinarianId,
+      );
+      // Só confia no recalculo se bater com o total salvo (evita divergência de regras antigas).
+      if (Math.abs(values.totalValue - exam.totalValue) <= EPS) {
+        extraByExamId.set(String(exam.id), values.extraFeeTotal);
+      }
+    });
+  }
+
   const totalExams = reportExams.length;
   const totalValue = reportExams.reduce((acc, curr) => acc + curr.totalValue, 0);
   const totalRepasseAndre = reportExams.reduce((acc, curr) => acc + curr.repasseProfessional, 0);
-  /** Mesma base da coluna "Rep. à Clín." e do TOTAL do PDF (soma de `pdfLiquidoClinicaColumn`). */
-  const totalRepasseClinicaColuna = reportExams.reduce((acc, curr) => acc + pdfLiquidoClinicaColumn(curr), 0);
-  const totalFaturadoPelaClinica = reportExams.reduce((acc, curr) => acc + pdfFaturadoPelaClinica(curr), 0);
+  const totalRepasseClinicaColuna = reportExams.reduce((acc, curr) => acc + pdfRepasseClinicaColumn(curr), 0);
+  const totalLiquidoClinica = reportExams.reduce((acc, curr) => acc + pdfLiquidoClinicaColumn(curr), 0);
+  const totalTaxaExtra = reportExams.reduce((acc, curr) => acc + (extraByExamId.get(String(curr.id)) ?? 0), 0);
   const totalISS = totalValue * 0.05;
 
   const startY = 65;
-  /** Altura só o necessário: título + 2 linhas da grade (~7,5 pt) + margem inferior mínima. */
-  const boxHeight = canViewFinancials ? 29 : 24;
+  /** Altura: título + 3 linhas (taxa extra na 3ª linha) */
+  const boxHeight = canViewFinancials ? 36 : 24;
 
   /** Grade 2×3: três colunas alinhadas (rótulo + valor na mesma linha). */
   const summaryCol = { a: 17, b: 72, c: 132 } as const;
@@ -379,6 +425,42 @@ export const generatePDFReport = async (
     doc.text(valueStr, vx, y);
   };
 
+  const drawSummaryLabelValueHighlight = (params: {
+    x: number;
+    y: number;
+    label: string;
+    valueStr: string;
+    fillColor?: [number, number, number];
+    valueColor?: [number, number, number];
+  }) => {
+    const { x, y, label, valueStr } = params;
+    const fill = params.fillColor ?? ([COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]] as [
+      number,
+      number,
+      number,
+    ]);
+    const valueColor =
+      params.valueColor ?? ([COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]] as [number, number, number]);
+
+    doc.setFont(pdfFont, 'normal');
+    doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
+    doc.text(label, x, y);
+
+    const gap = 1;
+    const vx = x + doc.getTextWidth(label) + gap;
+    doc.setFont(pdfFont, 'bold');
+
+    const padX = 1.0;
+    const rectH = 5.2;
+    const rectY = y - 4.0;
+    const rectW = doc.getTextWidth(valueStr) + padX * 2;
+    doc.setFillColor(fill[0], fill[1], fill[2]);
+    doc.roundedRect(vx - padX, rectY, rectW, rectH, 1.2, 1.2, 'F');
+
+    doc.setTextColor(valueColor[0], valueColor[1], valueColor[2]);
+    doc.text(valueStr, vx, y);
+  };
+
   // Caixa de Resumo Financeiro Geral
   doc.setFillColor(COLORS.lightBg[0], COLORS.lightBg[1], COLORS.lightBg[2]);
   doc.roundedRect(14, startY, 182, boxHeight, 3, 3, 'F');
@@ -392,6 +474,7 @@ export const generatePDFReport = async (
   if (canViewFinancials) {
     const row1Y = startY + 17;
     const row2Y = startY + 24;
+    const row3Y = startY + 31;
 
     // Linha 1 — valores na mesma cor dos rótulos (destaque só em negrito)
     drawSummaryLabelValue(summaryCol.a, row1Y, 'Qtd. Exames: ', String(totalExams), {
@@ -404,15 +487,24 @@ export const generatePDFReport = async (
       valueColor: [COLORS.text[0], COLORS.text[1], COLORS.text[2]],
     });
 
-    // Linha 2 — valores em teal (primary)
+    // Linha 2 — Líq. + Rep. fecham o Valor Total; "Faturado pela clínica" é só o subtotal maquininha clínica (não somar com os dois)
     drawSummaryLabelValue(summaryCol.a, row2Y, 'Líq. Profissional: ', formatMoney(totalRepasseAndre), {
-      valueColor: [COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]],
+      valueColor: [COLORS.text[0], COLORS.text[1], COLORS.text[2]],
     });
-    drawSummaryLabelValue(summaryCol.b, row2Y, 'Rep. da Clín.: ', formatMoney(totalRepasseClinicaColuna), {
-      valueColor: [COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]],
+    drawSummaryLabelValueHighlight({
+      x: summaryCol.b,
+      y: row2Y,
+      label: 'Rep. da Clín.: ',
+      valueStr: formatMoney(totalRepasseClinicaColuna),
+      fillColor: [COLORS.secondary[0], COLORS.secondary[1], COLORS.secondary[2]],
+      valueColor: [COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]],
     });
-    drawSummaryLabelValue(summaryCol.c, row2Y, 'Faturado pela clínica: ', formatMoney(totalFaturadoPelaClinica), {
-      valueColor: [COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]],
+    drawSummaryLabelValue(summaryCol.c, row2Y, 'Líq. Clín.: ', formatMoney(totalLiquidoClinica), {
+      valueColor: [COLORS.text[0], COLORS.text[1], COLORS.text[2]],
+    });
+
+    drawSummaryLabelValue(summaryCol.a, row3Y, 'Taxa extra: ', formatMoney(totalTaxaExtra), {
+      valueColor: [COLORS.text[0], COLORS.text[1], COLORS.text[2]],
     });
   } else {
     const row1Y = startY + 17;
@@ -461,7 +553,7 @@ export const generatePDFReport = async (
 
   /** Rótulos curtos para caber melhor no cabeçalho com fonte reduzida. */
   const tableHeaders = ['Data', 'Informações', 'Período', 'Máquina', 'Valor'];
-  if (canViewFinancials) tableHeaders.push('Líq. Prof.', 'Rep. da Clín.');
+  if (canViewFinancials) tableHeaders.push('Líq. Prof.', 'Rep. da Clín.', 'Líq. Clín.');
 
   groups.forEach(group => {
     if (group.title) {
@@ -480,6 +572,8 @@ export const generatePDFReport = async (
       let modalityText = getModalityLabel(exam.modality);
       if (exam.studies && exam.studies > 1) modalityText += ` (${exam.studies}x)`;
       if (exam.studyDescription) modalityText += `\n${exam.studyDescription}`;
+      const extra = extraByExamId.get(String(exam.id)) ?? 0;
+      if (extra > EPS) modalityText += `\nTaxa extra: ${formatMoney(extra)}`;
 
       const vetId = (exam.veterinarianId || '').toString().trim();
       const vetName = (options?.vetNames && vetId ? options.vetNames[vetId] : '') || 'Não Identificado';
@@ -501,6 +595,7 @@ export const generatePDFReport = async (
 
       if (canViewFinancials) {
         row.push(formatMoney(exam.repasseProfessional));
+        row.push(formatMoney(pdfRepasseClinicaColumn(exam)));
         row.push(formatMoney(pdfLiquidoClinicaColumn(exam)));
       }
       return row;
@@ -508,23 +603,25 @@ export const generatePDFReport = async (
 
     const grandTotalValue = group.exams.reduce((acc, curr) => acc + curr.totalValue, 0);
     const grandTotalProf = group.exams.reduce((acc, curr) => acc + curr.repasseProfessional, 0);
-    const grandTotalClinic = group.exams.reduce((acc, curr) => acc + pdfLiquidoClinicaColumn(curr), 0);
+    const grandTotalClinic = group.exams.reduce((acc, curr) => acc + pdfRepasseClinicaColumn(curr), 0);
+    const grandTotalLiqClin = group.exams.reduce((acc, curr) => acc + pdfLiquidoClinicaColumn(curr), 0);
 
-    const pageTotals = new Map<number, { val: number; prof: number; clin: number }>();
+    const pageTotals = new Map<number, { val: number; prof: number; clin: number; liqClin: number }>();
     const pageRowCounts = new Map<number, number>();
 
     const bumpPage = (pn: number) => {
-      if (!pageTotals.has(pn)) pageTotals.set(pn, { val: 0, prof: 0, clin: 0 });
+      if (!pageTotals.has(pn)) pageTotals.set(pn, { val: 0, prof: 0, clin: 0, liqClin: 0 });
     };
 
     const columnStylesFinancial: Record<number, Partial<Styles>> = {
-      0: { cellWidth: 16, halign: 'center', valign: 'middle' }, // Data
-      1: { cellWidth: 83, halign: 'left', valign: 'top' }, // Informações (PET, solicitante, exame, laudo)
-      2: { cellWidth: 14, halign: 'center', valign: 'middle' }, // Período
-      3: { cellWidth: 14, halign: 'center', valign: 'middle' }, // Máquina
-      4: { cellWidth: 15, halign: 'right', fontStyle: 'bold', valign: 'middle' }, // Valor
-      5: { cellWidth: 20, halign: 'right', valign: 'middle' }, // Líq. Prof.
-      6: { cellWidth: 20, halign: 'right', valign: 'middle' }, // Rep. à Clín.
+      0: { cellWidth: PDF_EXAM_FIN_COL_WIDTHS[0], halign: 'center', valign: 'middle' },
+      1: { cellWidth: PDF_EXAM_FIN_COL_WIDTHS[1], halign: 'left', valign: 'top' },
+      2: { cellWidth: PDF_EXAM_FIN_COL_WIDTHS[2], halign: 'center', valign: 'middle' },
+      3: { cellWidth: PDF_EXAM_FIN_COL_WIDTHS[3], halign: 'center', valign: 'middle' },
+      4: { cellWidth: PDF_EXAM_FIN_COL_WIDTHS[4], halign: 'right', fontStyle: 'bold', valign: 'middle' },
+      5: { cellWidth: PDF_EXAM_FIN_COL_WIDTHS[5], halign: 'right', valign: 'middle' },
+      6: { cellWidth: PDF_EXAM_FIN_COL_WIDTHS[6], halign: 'right', valign: 'middle' },
+      7: { cellWidth: PDF_EXAM_FIN_COL_WIDTHS[7], halign: 'right', valign: 'middle' },
     };
     const columnStylesNoFinancial: Record<number, Partial<Styles>> = {
       0: { cellWidth: 18, halign: 'center', valign: 'middle' }, // Data
@@ -539,6 +636,7 @@ export const generatePDFReport = async (
       head: [tableHeaders],
       body: tableBody,
       showFoot: 'never',
+      rowPageBreak: 'avoid',
       theme: 'grid',
       tableWidth: 182,
       margin: { ...PDF_EXAM_TABLE_MARGIN },
@@ -547,7 +645,7 @@ export const generatePDFReport = async (
         fontSize: PDF_TABLE_BODY_PT,
         cellPadding: 1.5,
         textColor: COLORS.text,
-        lineColor: [220, 220, 220],
+        lineColor: [220, 220, 220] as [number, number, number],
         lineWidth: 0.1,
         valign: 'middle',
         overflow: 'linebreak'
@@ -580,7 +678,8 @@ export const generatePDFReport = async (
         const t = pageTotals.get(pn)!;
         t.val += exam.totalValue;
         t.prof += exam.repasseProfessional;
-        t.clin += pdfLiquidoClinicaColumn(exam);
+        t.clin += pdfRepasseClinicaColumn(exam);
+        t.liqClin += pdfLiquidoClinicaColumn(exam);
         pageRowCounts.set(pn, (pageRowCounts.get(pn) ?? 0) + 1);
       },
       didDrawPage: (data: HookData) => {
@@ -591,7 +690,7 @@ export const generatePDFReport = async (
         const rowsThisPage = pageRowCounts.get(pn) ?? 0;
         if (rowsThisPage === 0) return;
 
-        const agg = pageTotals.get(pn) ?? { val: 0, prof: 0, clin: 0 };
+        const agg = pageTotals.get(pn) ?? { val: 0, prof: 0, clin: 0, liqClin: 0 };
         drawPdfExamTableFooterRow(doc, pdfFont, ml, cursor.y, 'SUBTOTAL', agg, canViewFinancials);
         cursor.y += PDF_EXAM_FOOT_ROW_H;
 
@@ -604,6 +703,7 @@ export const generatePDFReport = async (
             val: grandTotalValue,
             prof: grandTotalProf,
             clin: grandTotalClinic,
+            liqClin: grandTotalLiqClin,
           }, true);
         } else {
           drawPdfExamTableFooterRow(doc, pdfFont, ml, cursor.y, 'TOTAL', { val: grandTotalValue }, false);

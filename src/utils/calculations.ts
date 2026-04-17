@@ -6,6 +6,9 @@ interface CalculationResult {
   repasseClinic: number;
   /** Coluna "Repasse Clínica" da tabela de preços (após multiplicar estudos em RX), antes da regra do dono da máquina. */
   configuredTableRepasseClinic: number;
+  extraFeeTotal: number;
+  extraFeeProfessional: number;
+  extraFeeClinic: number;
 }
 
 export const calculateExamValues = (
@@ -85,10 +88,12 @@ export const calculateExamValues = (
     baseRepasseClinic *= studies;
   }
 
-  // Taxa extra: se houver split explícito, usa; senão divide 50/50.
+  // Taxa extra:
+  // - Se houver split explícito (campos próprios), respeita.
+  // - Caso contrário, a regra de negócio é: 100% da taxa extra fica com a clínica.
   const hasExplicitExtraSplit = additionalFeeProf > 0 || additionalFeeClinic > 0;
-  const extraProf = hasExplicitExtraSplit ? additionalFeeProf : additionalFee / 2;
-  const extraClinic = hasExplicitExtraSplit ? additionalFeeClinic : additionalFee / 2;
+  const extraProf = hasExplicitExtraSplit ? additionalFeeProf : 0;
+  const extraClinic = hasExplicitExtraSplit ? additionalFeeClinic : additionalFee;
 
   const totalValue = baseValue + extraProf + extraClinic;
 
@@ -132,6 +137,9 @@ export const calculateExamValues = (
       repasseProfessional: finalRepasseProf,
       repasseClinic: finalRepasseClinic,
       configuredTableRepasseClinic: 0,
+      extraFeeTotal: extraProf + extraClinic,
+      extraFeeProfessional: extraProf,
+      extraFeeClinic: extraClinic,
     };
   }
 
@@ -140,6 +148,9 @@ export const calculateExamValues = (
     repasseProfessional: finalRepasseProf,
     repasseClinic: finalRepasseClinic,
     configuredTableRepasseClinic: baseRepasseClinic,
+    extraFeeTotal: extraProf + extraClinic,
+    extraFeeProfessional: extraProf,
+    extraFeeClinic: extraClinic,
   };
 };
 

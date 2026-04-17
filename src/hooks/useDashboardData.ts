@@ -807,7 +807,7 @@ export function useDashboardData() {
         reportStartDate, 
         reportEndDate, 
         branding,
-        { groupByVet, vetNames, clinicNames, partnerLabel: reportPartnerLabel }
+        { groupByVet, vetNames, clinicNames, partnerLabel: reportPartnerLabel, priceRules }
       );
     } catch (error) {
       console.error("Erro ao gerar PDF:", error);
