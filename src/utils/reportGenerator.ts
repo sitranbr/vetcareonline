@@ -408,7 +408,7 @@ export const generatePDFReport = async (
     drawSummaryLabelValue(summaryCol.a, row2Y, 'Líq. Profissional: ', formatMoney(totalRepasseAndre), {
       valueColor: [COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]],
     });
-    drawSummaryLabelValue(summaryCol.b, row2Y, 'Rep. à Clín.: ', formatMoney(totalRepasseClinicaColuna), {
+    drawSummaryLabelValue(summaryCol.b, row2Y, 'Rep. da Clín.: ', formatMoney(totalRepasseClinicaColuna), {
       valueColor: [COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]],
     });
     drawSummaryLabelValue(summaryCol.c, row2Y, 'Faturado pela clínica: ', formatMoney(totalFaturadoPelaClinica), {
@@ -461,7 +461,7 @@ export const generatePDFReport = async (
 
   /** Rótulos curtos para caber melhor no cabeçalho com fonte reduzida. */
   const tableHeaders = ['Data', 'Informações', 'Período', 'Máquina', 'Valor'];
-  if (canViewFinancials) tableHeaders.push('Líq. Prof.', 'Rep. à Clín.');
+  if (canViewFinancials) tableHeaders.push('Líq. Prof.', 'Rep. da Clín.');
 
   groups.forEach(group => {
     if (group.title) {
