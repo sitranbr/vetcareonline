@@ -27,7 +27,8 @@ const PDF_TABLE_FOOT_PT = 7;
 const PDF_REPORT_META_PT = 8;
 const PDF_REPORT_META_SIDE_PT = 7;
 const PDF_REPORT_SUMMARY_TITLE_PT = 9;
-const PDF_REPORT_SUMMARY_BODY_PT = 8;
+/** Grade 2×3 do resumo (rótulos longos; evita sobreposição). */
+const PDF_REPORT_SUMMARY_GRID_PT = 7.5;
 const PDF_REPORT_GROUP_TITLE_PT = 9;
 
 function arrayBufferToBinaryString(buffer: ArrayBuffer): string {
@@ -73,6 +74,29 @@ const loadImage = (url: string): Promise<HTMLImageElement> => {
     img.onerror = reject;
   });
 };
+
+/**
+ * Coluna "Líq. Clín." no PDF: com máquina do profissional exibe 0 (sem repasse ao estabelecimento nesta coluna).
+ * Com máquina da clínica, o líquido da clínica é total − profissional (mesma base do resumo da lista), evitando
+ * R$ 0,00 quando `repasse_clinic` no banco está zerado ou desatualizado.
+ */
+function pdfLiquidoClinicaColumn(exam: Exam): number {
+  if (exam.machineOwner === 'professional') return 0;
+  return Math.max(0, exam.totalValue - exam.repasseProfessional);
+}
+
+/** Repasse devido à clínica quando o pagamento é na máquina do profissional (conforme tabela / valores do exame). */
+function pdfRepasseParaClinicaProfissional(exam: Exam): number {
+  if (exam.machineOwner !== 'professional') return 0;
+  const stored = Number(exam.repasseClinic);
+  if (!Number.isNaN(stored) && stored > 0) return stored;
+  return Math.max(0, exam.totalValue - exam.repasseProfessional);
+}
+
+/** Valor total faturado no PDV da clínica (máquina da clínica). */
+function pdfFaturadoPelaClinica(exam: Exam): number {
+  return exam.machineOwner === 'clinic' ? exam.totalValue : 0;
+}
 
 // Agora aceita BrandingInfo (Vet ou Clínica) em vez de ClinicSettings global
 const addHeader = async (doc: jsPDF, title: string, branding: BrandingInfo, fontName: string = PDF_FONT_FALLBACK) => {
@@ -250,13 +274,35 @@ export const generatePDFReport = async (
   const totalExams = reportExams.length;
   const totalValue = reportExams.reduce((acc, curr) => acc + curr.totalValue, 0);
   const totalRepasseAndre = reportExams.reduce((acc, curr) => acc + curr.repasseProfessional, 0);
-  // O Líquido da Clínica é sempre a diferença entre o Total e o Líquido do Profissional
-  const totalRepasseUnivet = totalValue - totalRepasseAndre;
+  const totalRepasseParaClinica = reportExams.reduce((acc, curr) => acc + pdfRepasseParaClinicaProfissional(curr), 0);
+  const totalFaturadoPelaClinica = reportExams.reduce((acc, curr) => acc + pdfFaturadoPelaClinica(curr), 0);
   const totalISS = totalValue * 0.05;
 
   const startY = 65;
-  const boxHeight = canViewFinancials ? 30 : 20;
-  
+  /** Altura só o necessário: título + 2 linhas da grade (~7,5 pt) + margem inferior mínima. */
+  const boxHeight = canViewFinancials ? 29 : 24;
+
+  /** Grade 2×3: três colunas alinhadas (rótulo + valor na mesma linha). */
+  const summaryCol = { a: 17, b: 72, c: 132 } as const;
+
+  const drawSummaryLabelValue = (
+    x: number,
+    y: number,
+    label: string,
+    valueStr: string,
+    opts: { valueColor?: [number, number, number] },
+  ) => {
+    doc.setFont(pdfFont, 'normal');
+    doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
+    doc.text(label, x, y);
+    const gap = 1;
+    const vx = x + doc.getTextWidth(label) + gap;
+    doc.setFont(pdfFont, 'bold');
+    const vc = opts.valueColor ?? [COLORS.text[0], COLORS.text[1], COLORS.text[2]];
+    doc.setTextColor(vc[0], vc[1], vc[2]);
+    doc.text(valueStr, vx, y);
+  };
+
   // Caixa de Resumo Financeiro Geral
   doc.setFillColor(COLORS.lightBg[0], COLORS.lightBg[1], COLORS.lightBg[2]);
   doc.roundedRect(14, startY, 182, boxHeight, 3, 3, 'F');
@@ -264,40 +310,45 @@ export const generatePDFReport = async (
   doc.setFont(pdfFont, 'bold');
   doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
   doc.text('Resumo Financeiro Geral', 18, startY + 5);
-  
-  doc.setFontSize(PDF_REPORT_SUMMARY_BODY_PT);
-  doc.setFont(pdfFont, 'normal');
-  doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
-  doc.text('Qtd. Exames:', 18, startY + 18);
-  doc.setFont(pdfFont, 'bold');
-  doc.text(totalExams.toString(), 44, startY + 18);
-  
-  doc.setFont(pdfFont, 'normal');
-  doc.text('Valor Total:', 75, startY + 18);
-  doc.setFont(pdfFont, 'bold');
-  doc.text(formatMoney(totalValue), 95, startY + 18);
+
+  doc.setFontSize(PDF_REPORT_SUMMARY_GRID_PT);
 
   if (canViewFinancials) {
-    doc.setFont(pdfFont, 'normal');
-    doc.text('ISS (5%):', 140, startY + 18);
-    doc.setFont(pdfFont, 'bold');
-    doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
-    doc.text(formatMoney(totalISS), 158, startY + 18);
-    
-    const row2Y = startY + 25;
-    doc.setFont(pdfFont, 'normal');
-    doc.text('Líq. Profissional:', 18, row2Y);
-    doc.setFont(pdfFont, 'bold');
-    doc.setTextColor(COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]);
-    doc.text(formatMoney(totalRepasseAndre), 44, row2Y);
-    
-    doc.setFont(pdfFont, 'normal');
-    doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
-    doc.text('Líq. Clínica:', 75, row2Y);
-    doc.setFont(pdfFont, 'bold');
-    doc.setTextColor(COLORS.dark[0], COLORS.dark[1], COLORS.dark[2]);
-    doc.text(formatMoney(totalRepasseUnivet), 95, row2Y);
+    const row1Y = startY + 17;
+    const row2Y = startY + 24;
+
+    // Linha 1 — valores na mesma cor dos rótulos (destaque só em negrito)
+    drawSummaryLabelValue(summaryCol.a, row1Y, 'Qtd. Exames: ', String(totalExams), {
+      valueColor: [COLORS.text[0], COLORS.text[1], COLORS.text[2]],
+    });
+    drawSummaryLabelValue(summaryCol.b, row1Y, 'Valor Total: ', formatMoney(totalValue), {
+      valueColor: [COLORS.text[0], COLORS.text[1], COLORS.text[2]],
+    });
+    drawSummaryLabelValue(summaryCol.c, row1Y, 'ISS (5%): ', formatMoney(totalISS), {
+      valueColor: [COLORS.text[0], COLORS.text[1], COLORS.text[2]],
+    });
+
+    // Linha 2 — valores em teal (primary)
+    drawSummaryLabelValue(summaryCol.a, row2Y, 'Líq. Profissional: ', formatMoney(totalRepasseAndre), {
+      valueColor: [COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]],
+    });
+    drawSummaryLabelValue(summaryCol.b, row2Y, 'Repasse à clínica: ', formatMoney(totalRepasseParaClinica), {
+      valueColor: [COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]],
+    });
+    drawSummaryLabelValue(summaryCol.c, row2Y, 'Faturado pela clínica: ', formatMoney(totalFaturadoPelaClinica), {
+      valueColor: [COLORS.primary[0], COLORS.primary[1], COLORS.primary[2]],
+    });
+  } else {
+    const row1Y = startY + 17;
+    drawSummaryLabelValue(summaryCol.a, row1Y, 'Qtd. Exames: ', String(totalExams), {
+      valueColor: [COLORS.text[0], COLORS.text[1], COLORS.text[2]],
+    });
+    drawSummaryLabelValue(summaryCol.b, row1Y, 'Valor Total: ', formatMoney(totalValue), {
+      valueColor: [COLORS.text[0], COLORS.text[1], COLORS.text[2]],
+    });
   }
+
+  doc.setFontSize(PDF_REPORT_META_PT);
 
   if (reportExams.length === 0) {
     doc.setFontSize(10);
@@ -334,7 +385,7 @@ export const generatePDFReport = async (
 
   /** Rótulos curtos para caber melhor no cabeçalho com fonte reduzida. */
   const tableHeaders = ['Data', 'PET', 'Veterinário', 'Solicit.', 'Modalidade', 'Período', 'Máquina', 'Valor'];
-  if (canViewFinancials) tableHeaders.push('Líq. Prof.', 'Líq. Clín.');
+  if (canViewFinancials) tableHeaders.push('Líq. Prof.', 'Rep. à Clín.');
 
   groups.forEach(group => {
     if (group.title) {
@@ -370,14 +421,14 @@ export const generatePDFReport = async (
 
       if (canViewFinancials) {
         row.push(formatMoney(exam.repasseProfessional));
-        row.push(formatMoney(exam.totalValue - exam.repasseProfessional)); // Líquido Clínica
+        row.push(formatMoney(pdfLiquidoClinicaColumn(exam)));
       }
       return row;
     });
 
     const subTotalValue = group.exams.reduce((acc, curr) => acc + curr.totalValue, 0);
     const subTotalProf = group.exams.reduce((acc, curr) => acc + curr.repasseProfessional, 0);
-    const subTotalClinic = subTotalValue - subTotalProf;
+    const subTotalClinic = group.exams.reduce((acc, curr) => acc + pdfLiquidoClinicaColumn(curr), 0);
 
     const footRow = canViewFinancials 
       ? [[ 'SUBTOTAL', '', '', '', '', '', '', formatMoney(subTotalValue), formatMoney(subTotalProf), formatMoney(subTotalClinic) ]] 

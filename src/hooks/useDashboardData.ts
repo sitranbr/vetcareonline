@@ -1183,6 +1183,7 @@ export function useDashboardData() {
   };
 
   const previewTotals = useMemo(() => {
+    const clinicMachine = formData.machineOwner === 'clinic';
     return formData.items.reduce((acc, item) => {
       if (!item.modality) return acc;
       const values = calculateExamValues(
@@ -1199,9 +1200,11 @@ export function useDashboardData() {
       return {
         total: acc.total + values.totalValue,
         prof: acc.prof + values.repasseProfessional,
-        clinic: acc.clinic + values.repasseClinic
+        /** Na máquina da clínica não há "repasse" ao estabelecimento (valor exibido zero); o cadastro na tabela segue em `tableRepasseClinicSum`. */
+        clinic: acc.clinic + (clinicMachine ? 0 : values.repasseClinic),
+        tableRepasseClinicSum: acc.tableRepasseClinicSum + values.configuredTableRepasseClinic,
       };
-    }, { total: 0, prof: 0, clinic: 0 });
+    }, { total: 0, prof: 0, clinic: 0, tableRepasseClinicSum: 0 });
   }, [formData.items, formData.period, formData.machineOwner, effectiveClinicId, priceRules, effectiveVeterinarianId, vetChoseNoClinic]);
 
   const selectedPartnerScope = partnerScopeSelectValue(priceForm);

@@ -329,6 +329,14 @@ export function ExamFormTab(props: DashboardData) {
                   <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex-1 w-full">
                     <p className="text-xs text-gray-500 mb-1">Repasse à Clínica</p>
                     <p className="text-xl font-bold text-gray-800">{formatMoney(props.previewTotals.clinic)}</p>
+                    {props.formData.machineOwner === 'clinic' && (
+                      <p className="text-xs text-gray-500 mt-2 leading-snug">
+                        Repasse Clínica na tabela de preços:{' '}
+                        <span className="font-semibold text-gray-700">
+                          {formatMoney(props.previewTotals.tableRepasseClinicSum)}
+                        </span>
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>

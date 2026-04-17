@@ -4,6 +4,8 @@ interface CalculationResult {
   totalValue: number;
   repasseProfessional: number;
   repasseClinic: number;
+  /** Coluna "Repasse Clínica" da tabela de preços (após multiplicar estudos em RX), antes da regra do dono da máquina. */
+  configuredTableRepasseClinic: number;
 }
 
 export const calculateExamValues = (
@@ -125,12 +127,19 @@ export const calculateExamValues = (
   if (options?.noClinicPartner) {
     finalRepasseClinic = 0;
     finalRepasseProf = totalValue;
+    return {
+      totalValue,
+      repasseProfessional: finalRepasseProf,
+      repasseClinic: finalRepasseClinic,
+      configuredTableRepasseClinic: 0,
+    };
   }
 
   return {
     totalValue,
     repasseProfessional: finalRepasseProf,
     repasseClinic: finalRepasseClinic,
+    configuredTableRepasseClinic: baseRepasseClinic,
   };
 };
 
