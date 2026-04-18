@@ -40,11 +40,6 @@ export function ReportsTab(props: DashboardData) {
 
   return (
           <div className="p-6">
-            <p className="text-xs text-gray-500 mb-3 leading-relaxed">
-              Os totais partem dos <strong className="text-gray-700">mesmos exames da lista</strong> (busca, modalidade, período &quot;De/até&quot; da lista, contexto de parceiro).
-              Aqui você pode <strong className="text-gray-700">refinar</strong>: datas (só aplicam se início <em>e</em> fim estiverem preenchidos), parceiro e tipo de exame.
-              Com datas em branco, o relatório <strong className="text-gray-700">não</strong> recorta por período além do que a lista já definiu.
-            </p>
             <div className="flex flex-col gap-4 mb-6">
               <div className="flex flex-wrap items-stretch gap-3">
                 <div className="bg-gray-50 p-2 rounded-lg border border-gray-200 flex gap-2 items-center min-w-0 flex-1 sm:flex-initial">
