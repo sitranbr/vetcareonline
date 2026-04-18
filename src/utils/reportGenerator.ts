@@ -120,7 +120,8 @@ const PDF_EXAM_FOOT_ROW_H = 6.5;
  * Larguras das colunas da tabela de exames (financeiro, 8 colunas). Soma = PDF_EXAM_TABLE_WIDTH.
  * Usado para alinhar SUBTOTAL/TOTAL com as células do autoTable.
  */
-const PDF_EXAM_FIN_COL_WIDTHS = [16, 70, 12, 12, 16, 18, 18, 20] as const;
+/** Soma = PDF_EXAM_TABLE_WIDTH. Informações mais estreita; Período, Máquina e Rep. da Clín. mais largos para cabeçalho/células sem quebra. */
+const PDF_EXAM_FIN_COL_WIDTHS = [16, 48, 22, 20, 16, 18, 26, 16] as const;
 
 /** Borda direita (mm desde o início da tabela) das colunas Valor, Líq. Prof., Rep. da Clín., Líq. Clín. */
 const PDF_EXAM_FIN_VALUE_RIGHT: readonly [number, number, number, number] = (() => {
@@ -353,15 +354,17 @@ export const generatePDFReport = async (
   await addHeader(doc, 'Relatório de Exames', branding, pdfFont);
   const today = format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
   
-  const periodStart = format(parseISO(startDate), "dd/MM/yyyy");
-  const periodEnd = format(parseISO(endDate), "dd/MM/yyyy");
+  const hasPdfPeriod = Boolean((startDate || '').trim() && (endDate || '').trim());
+  const periodLine = hasPdfPeriod
+    ? `Período: ${format(parseISO(startDate), "dd/MM/yyyy")} até ${format(parseISO(endDate), "dd/MM/yyyy")}`
+    : 'Período: mesmo recorte da lista de exames (sem filtro extra de datas no relatório)';
   
   doc.setFont(pdfFont, 'normal');
   doc.setFontSize(PDF_REPORT_META_PT);
   doc.setTextColor(COLORS.text[0], COLORS.text[1], COLORS.text[2]);
   doc.text(`Gerado por: ${user.name}`, 14, 42);
   doc.text(`Data de Emissão: ${today}`, 14, 47);
-  doc.text(`Período: ${periodStart} até ${periodEnd}`, 14, 52);
+  doc.text(periodLine, 14, 52);
   doc.text(`${options?.partnerLabel || 'Geral (Todos)'}`, 14, 57);
   
   doc.setFontSize(PDF_REPORT_META_SIDE_PT);
@@ -625,10 +628,10 @@ export const generatePDFReport = async (
     };
     const columnStylesNoFinancial: Record<number, Partial<Styles>> = {
       0: { cellWidth: 18, halign: 'center', valign: 'middle' }, // Data
-      1: { cellWidth: 118, halign: 'left', valign: 'top' }, // Informações
-      2: { cellWidth: 16, halign: 'center', valign: 'middle' }, // Período
-      3: { cellWidth: 15, halign: 'center', valign: 'middle' }, // Máquina
-      4: { cellWidth: 15, halign: 'right', fontStyle: 'bold', valign: 'middle' }, // Valor
+      1: { cellWidth: 88, halign: 'left', valign: 'top' }, // Informações (mais estreita que antes)
+      2: { cellWidth: 22, halign: 'center', valign: 'middle' }, // Período
+      3: { cellWidth: 20, halign: 'center', valign: 'middle' }, // Máquina
+      4: { cellWidth: 34, halign: 'right', fontStyle: 'bold', valign: 'middle' }, // Valor
     };
 
     autoTable(doc, {

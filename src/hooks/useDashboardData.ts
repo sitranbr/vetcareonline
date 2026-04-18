@@ -6,7 +6,6 @@ import { useRegistry } from '../context/RegistryContext';
 import { Exam, Modality, Period, MachineOwner, PriceRule, ExamItem, BrandingInfo } from '../types';
 import { calculateExamValues } from '../utils/calculations';
 import { generatePDFReport, generateExamReport } from '../utils/reportGenerator';
-import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { isClinicTierUser, isVetTierUser } from '../lib/subscriberTier';
 import {
@@ -82,8 +81,8 @@ export function useDashboardData() {
   
   const [showFinancialStats, setShowFinancialStats] = useState(true);
 
-  const [reportStartDate, setReportStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
-  const [reportEndDate, setReportEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [reportStartDate, setReportStartDate] = useState('');
+  const [reportEndDate, setReportEndDate] = useState('');
   const [reportPartnerFilter, setReportPartnerFilter] = useState('all');
   /** Relatório: filtro por tipo de exame (modalidade), alinhado à lista e à proposta comercial. */
   const [reportModalityFilter, setReportModalityFilter] = useState('');
@@ -1024,7 +1023,7 @@ export function useDashboardData() {
   const filteredExamsForReport = useMemo(
     () =>
       deriveFilteredExamsForReport({
-        exams,
+        exams: filteredExamsForList,
         reportStartDate,
         reportEndDate,
         reportModalityFilter,
@@ -1039,7 +1038,7 @@ export function useDashboardData() {
         extraClinics,
       }),
     [
-      exams,
+      filteredExamsForList,
       reportStartDate,
       reportEndDate,
       reportModalityFilter,
@@ -1092,14 +1091,17 @@ export function useDashboardData() {
   }, [reportPartnerFilter, availableVeterinarians, availableClinicsForVet, clinics, guestClinics, extraClinics]);
 
   /**
-   * UX: se o usuário seleciona um parceiro no relatório e o período atual zera o resultado,
-   * mas existem exames desse parceiro fora do intervalo, expandir o período automaticamente.
+   * UX: parceiro no relatório + período explícito que zera o resultado, mas ainda há exames desse parceiro
+   * na lista (fora do intervalo) → expandir início/fim para englobar essas datas.
    */
   useEffect(() => {
     const raw = (reportPartnerFilter || '').trim();
     if (!raw || raw === 'all') return;
     if ((reportModalityFilter || '').trim()) return;
-    if (!exams?.length) return;
+    const fromR = (reportStartDate || '').trim();
+    const toR = (reportEndDate || '').trim();
+    if (!fromR || !toR) return;
+    if (!filteredExamsForList?.length) return;
     if (filteredExamsForReport.length > 0) return;
 
     const [type, id] = raw.split('|');
@@ -1124,7 +1126,7 @@ export function useDashboardData() {
       return ev === id;
     };
 
-    const matches = exams.filter(partnerMatchesIgnoringDate);
+    const matches = filteredExamsForList.filter(partnerMatchesIgnoringDate);
     if (matches.length === 0) return;
 
     const dates = matches
@@ -1144,7 +1146,7 @@ export function useDashboardData() {
   }, [
     reportPartnerFilter,
     reportModalityFilter,
-    exams,
+    filteredExamsForList,
     filteredExamsForReport.length,
     reportStartDate,
     reportEndDate,

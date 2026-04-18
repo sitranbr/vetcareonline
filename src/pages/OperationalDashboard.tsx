@@ -16,6 +16,7 @@ import { SummaryCard } from '../components/SummaryCard';
 import { ExamReportEditor } from '../components/ExamReportEditor';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { useDashboardData } from '../hooks/useDashboardData';
+import { format, parseISO } from 'date-fns';
 import { formatMoney } from '../utils/calculations';
 import { ExamsListTab } from '../components/dashboard/ExamsListTab';
 import { ExamFormTab } from '../components/dashboard/ExamFormTab';
@@ -31,6 +32,24 @@ const TABS = [
 
 export const OperationalDashboard = () => {
   const d = useDashboardData();
+
+  const summaryStats = d.activeTab === 'reports' && d.canViewFinancialReports ? d.reportStats : d.listStats;
+  const summaryExamLabel =
+    d.activeTab === 'reports' && d.canViewFinancialReports
+      ? 'exames no relatório'
+      : 'exames listados';
+  const summaryPeriodHint =
+    d.activeTab === 'reports' && d.canViewFinancialReports && d.reportStartDate && d.reportEndDate
+      ? (() => {
+          try {
+            const a = format(parseISO(d.reportStartDate), 'dd/MM/yyyy');
+            const b = format(parseISO(d.reportEndDate), 'dd/MM/yyyy');
+            return `${a} – ${b}`;
+          } catch {
+            return null;
+          }
+        })()
+      : null;
 
   if (d.user && !d.isProfileReady) {
     return (
@@ -99,8 +118,14 @@ export const OperationalDashboard = () => {
                 <div className="flex-1 w-full">
                   <SummaryCard
                     title="Faturamento Total"
-                    value={formatMoney(d.listStats.totalArrecadado)}
-                    subtitle={`${d.listStats.count} exames listados`}
+                    value={formatMoney(summaryStats.totalArrecadado)}
+                    subtitle={
+                      summaryPeriodHint
+                        ? `${summaryStats.count} ${summaryExamLabel} · ${summaryPeriodHint}`
+                        : d.activeTab === 'reports' && d.canViewFinancialReports
+                          ? `${summaryStats.count} ${summaryExamLabel} · recorte da lista`
+                          : `${summaryStats.count} ${summaryExamLabel}`
+                    }
                     icon={DollarSign}
                     colorClass="text-green-600"
                     iconColorClass="text-green-600"
@@ -114,7 +139,7 @@ export const OperationalDashboard = () => {
                 <div className="flex-1 w-full">
                   <SummaryCard
                     title="Líquido Profissional"
-                    value={formatMoney(d.listStats.totalRepasseProf)}
+                    value={formatMoney(summaryStats.totalRepasseProf)}
                     subtitle={
                       d.loggedUserEntity?.type === 'vet' ? 'Sua Receita Líquida' : 'A Pagar ao Veterinário'
                     }
@@ -131,7 +156,7 @@ export const OperationalDashboard = () => {
                 <div className="flex-1 w-full">
                   <SummaryCard
                     title="Líquido Clínica"
-                    value={formatMoney(d.listStats.totalRepasseClinic)}
+                    value={formatMoney(summaryStats.totalRepasseClinic)}
                     subtitle={
                       d.loggedUserEntity?.type === 'clinic' || d.user?.level === 1
                         ? 'Receita Líquida da Clínica'

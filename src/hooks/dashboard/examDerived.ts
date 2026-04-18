@@ -156,11 +156,17 @@ export function deriveFilteredExamsForList(params: {
   });
 }
 
+/**
+ * Refina os exames já filtrados pela lista (`base` = saída de `deriveFilteredExamsForList`).
+ * Datas do relatório só cortam o período quando **início e fim** estão preenchidos; caso contrário,
+ * mantém o recorte temporal da própria lista (incluindo “sem datas” = todo o histórico visível).
+ */
 export function deriveFilteredExamsForReport(params: {
+  /** Exames já filtrados pelos critérios da aba Lista de Exames. */
   exams: Exam[];
   reportStartDate: string;
   reportEndDate: string;
-  /** Código de modalidade (ex.: USG) ou vazio para todos os exames. */
+  /** Código de modalidade (ex.: USG) ou vazio = não refinar além da lista. */
   reportModalityFilter: string;
   reportPartnerFilter: string;
   availableVeterinarians: { id: string; profileId?: string | null }[];
@@ -188,9 +194,20 @@ export function deriveFilteredExamsForReport(params: {
     extraClinics,
   } = params;
 
+  const fromRaw = (reportStartDate || '').trim();
+  const toRaw = (reportEndDate || '').trim();
+  const hasReportDateRange = Boolean(fromRaw && toRaw);
+  let rangeFrom = fromRaw;
+  let rangeTo = toRaw;
+  if (hasReportDateRange && rangeFrom > rangeTo) {
+    [rangeFrom, rangeTo] = [rangeTo, rangeFrom];
+  }
+
   const filtered = exams.filter((e) => {
-    const d = e.date;
-    if (d < reportStartDate || d > reportEndDate) return false;
+    const d = (e.date || '').toString().trim();
+    if (hasReportDateRange) {
+      if (!d || d < rangeFrom || d > rangeTo) return false;
+    }
 
     if (reportModalityFilter && String(e.modality ?? '') !== reportModalityFilter) {
       return false;
