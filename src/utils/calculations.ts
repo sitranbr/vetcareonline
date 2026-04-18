@@ -185,3 +185,14 @@ export const getPeriodLabel = (p: Period) => {
   };
   return map[p] || p;
 };
+
+/** Opções do filtro da lista de exames (valor = código salvo no exame; label = nome amigável). */
+export const EXAM_LIST_MODALITY_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: 'Todas as modalidades' },
+  { value: 'USG', label: 'Ultrassom' },
+  { value: 'RX', label: 'Raio-X' },
+  { value: 'RX_CONTROLE', label: 'Raio-X controle' },
+  { value: 'USG_FAST', label: 'Ultrassom FAST' },
+  { value: 'RX_FAST', label: 'Raio-X FAST' },
+  { value: 'OUTROS', label: 'Outro / personalizado' },
+];

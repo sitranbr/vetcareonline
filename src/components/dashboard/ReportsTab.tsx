@@ -1,7 +1,7 @@
 import ReactECharts from 'echarts-for-react';
-import { Calendar, Filter, FileText, DollarSign, UserCheck, Building2, Loader2 } from 'lucide-react';
+import { Calendar, Filter, FileText, DollarSign, UserCheck, Building2, Loader2, PieChart } from 'lucide-react';
 import { SummaryCard } from '../SummaryCard';
-import { formatMoney } from '../../utils/calculations';
+import { formatMoney, EXAM_LIST_MODALITY_FILTER_OPTIONS } from '../../utils/calculations';
 import type { DashboardData } from '../../hooks/useDashboardData';
 
 export function ReportsTab(props: DashboardData) {
@@ -34,23 +34,27 @@ export function ReportsTab(props: DashboardData) {
     a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }),
   );
 
+  const reportModalityLabel =
+    EXAM_LIST_MODALITY_FILTER_OPTIONS.find((o) => o.value === props.reportModalityFilter)?.label ??
+    props.reportModalityFilter;
+
   return (
           <div className="p-6">
-            <div className="flex justify-between items-center mb-6">
-              <div className="flex items-center gap-4 flex-wrap">
-                <div className="bg-gray-50 p-2 rounded-lg border border-gray-200 flex gap-2 items-center">
-                  <Calendar className="w-4 h-4 text-gray-500" />
-                  <input type="date" value={props.reportStartDate} onChange={e => props.setReportStartDate(e.target.value)} className="bg-transparent text-sm outline-none text-gray-700" />
-                  <span className="text-gray-400 text-xs">até</span>
-                  <input type="date" value={props.reportEndDate} onChange={e => props.setReportEndDate(e.target.value)} className="bg-transparent text-sm outline-none text-gray-700" />
+            <div className="flex flex-col gap-4 mb-6">
+              <div className="flex flex-wrap items-stretch gap-3">
+                <div className="bg-gray-50 p-2 rounded-lg border border-gray-200 flex gap-2 items-center min-w-0 flex-1 sm:flex-initial">
+                  <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
+                  <input type="date" value={props.reportStartDate} onChange={e => props.setReportStartDate(e.target.value)} className="bg-transparent text-sm outline-none text-gray-700 min-w-0" />
+                  <span className="text-gray-400 text-xs shrink-0">até</span>
+                  <input type="date" value={props.reportEndDate} onChange={e => props.setReportEndDate(e.target.value)} className="bg-transparent text-sm outline-none text-gray-700 min-w-0" />
                 </div>
-                
-                <div className="bg-gray-50 p-2 rounded-lg border border-gray-200 flex gap-2 items-center">
-                  <Filter className="w-4 h-4 text-gray-500" />
+
+                <div className="bg-gray-50 p-2 rounded-lg border border-gray-200 flex gap-2 items-center min-w-0 flex-1 sm:min-w-[200px] sm:max-w-md">
+                  <Filter className="w-4 h-4 text-gray-500 shrink-0" />
                   <select 
                     value={props.reportPartnerFilter} 
                     onChange={e => props.setReportPartnerFilter(e.target.value)}
-                    className="bg-transparent text-sm outline-none text-gray-700"
+                    className="bg-transparent text-sm outline-none text-gray-700 min-w-0 flex-1"
                   >
                     <option value="all">Geral (Todos)</option>
                     {props.loggedUserEntity?.type === 'clinic' || props.user?.level === 1 ? (
@@ -82,10 +86,30 @@ export function ReportsTab(props: DashboardData) {
                   </select>
                 </div>
 
+                <div className="bg-gray-50 p-2 rounded-lg border border-gray-200 flex gap-2 items-center min-w-0 flex-1 sm:min-w-[220px] sm:max-w-xs">
+                  <PieChart className="w-4 h-4 text-gray-500 shrink-0" aria-hidden />
+                  <label htmlFor="report-modality-filter" className="sr-only">
+                    Filtrar relatório por tipo de exame (modalidade)
+                  </label>
+                  <select
+                    id="report-modality-filter"
+                    value={props.reportModalityFilter}
+                    onChange={(e) => props.setReportModalityFilter(e.target.value)}
+                    className="bg-transparent text-sm outline-none text-gray-700 min-w-0 flex-1 font-medium"
+                  >
+                    {EXAM_LIST_MODALITY_FILTER_OPTIONS.map((o) => (
+                      <option key={o.value || 'report-all'} value={o.value}>
+                        {o.value === '' ? 'Todos os exames' : o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <button 
+                  type="button"
                   onClick={props.handleExportPDF} 
                   disabled={props.isGeneratingPdf || !props.canExportFinancialReportPdf}
-                  className="bg-petcare-dark text-white px-4 py-2 rounded-lg font-bold hover:bg-petcare-DEFAULT transition-colors flex items-center gap-2 shadow-md disabled:opacity-70"
+                  className="bg-petcare-dark text-white px-4 py-2 rounded-lg font-bold hover:bg-petcare-DEFAULT transition-colors flex items-center justify-center gap-2 shadow-md disabled:opacity-70 w-full sm:w-auto sm:ml-auto"
                 >
                   {props.isGeneratingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
                   Exportar PDF
@@ -109,7 +133,16 @@ export function ReportsTab(props: DashboardData) {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                <h3 className="text-sm font-bold text-gray-700 mb-4">Distribuição por Modalidade</h3>
+                <h3 className="text-sm font-bold text-gray-700">Exames por modalidade</h3>
+                <p className="text-xs text-gray-500 mt-1 mb-4">
+                  {props.reportModalityFilter ? (
+                    <>
+                      Somente <strong className="text-gray-700">{reportModalityLabel}</strong>. O gráfico e os totais usam o mesmo filtro.
+                    </>
+                  ) : (
+                    'Todos os tipos de exame no período e no escopo selecionados acima.'
+                  )}
+                </p>
                 <ReactECharts option={props.chartOption} style={{ height: '300px' }} />
               </div>
 

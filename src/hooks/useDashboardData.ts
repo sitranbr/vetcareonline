@@ -84,7 +84,9 @@ export function useDashboardData() {
 
   const [reportStartDate, setReportStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [reportEndDate, setReportEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
-  const [reportPartnerFilter, setReportPartnerFilter] = useState('all'); 
+  const [reportPartnerFilter, setReportPartnerFilter] = useState('all');
+  /** Relatório: filtro por tipo de exame (modalidade), alinhado à lista e à proposta comercial. */
+  const [reportModalityFilter, setReportModalityFilter] = useState('');
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   const [reportEditorState, setReportEditorState] = useState<{ isOpen: boolean; exam: Exam | null; studyId?: string; }>({ isOpen: false, exam: null });
@@ -478,6 +480,8 @@ export function useDashboardData() {
   ]);
 
   const [filterPet, setFilterPet] = useState('');
+  /** Filtro explícito por código de modalidade (lista suspensa); vazio = todas. */
+  const [filterExamModality, setFilterExamModality] = useState('');
   /** Ordenação da lista de exames por data (mais recente = padrão, alinhado ao carregamento atual). */
   const [examListDateOrder, setExamListDateOrder] = useState<'desc' | 'asc'>('desc');
   /** Filtro por intervalo de datas do exame (campo date); vazio = sem limite naquele extremo. */
@@ -977,7 +981,8 @@ export function useDashboardData() {
     () =>
       deriveFilteredExamsForList({
         exams,
-        filterPet,
+        filterListText: filterPet,
+        filterExamModality,
         examListDateOrder,
         examListDateFrom,
         examListDateTo,
@@ -997,6 +1002,7 @@ export function useDashboardData() {
     [
       exams,
       filterPet,
+      filterExamModality,
       examListDateOrder,
       examListDateFrom,
       examListDateTo,
@@ -1021,6 +1027,7 @@ export function useDashboardData() {
         exams,
         reportStartDate,
         reportEndDate,
+        reportModalityFilter,
         reportPartnerFilter,
         availableVeterinarians,
         reportVetFilterTeam,
@@ -1035,6 +1042,7 @@ export function useDashboardData() {
       exams,
       reportStartDate,
       reportEndDate,
+      reportModalityFilter,
       reportPartnerFilter,
       availableVeterinarians,
       reportVetFilterTeam,
@@ -1051,7 +1059,7 @@ export function useDashboardData() {
 
   useEffect(() => {
     setExamListPage(1);
-  }, [filterPet, examListDateOrder, examListDateFrom, examListDateTo]);
+  }, [filterPet, filterExamModality, examListDateOrder, examListDateFrom, examListDateTo]);
 
   useEffect(() => {
     setExamListPage((p) => Math.min(p, examListTotalPages));
@@ -1090,6 +1098,7 @@ export function useDashboardData() {
   useEffect(() => {
     const raw = (reportPartnerFilter || '').trim();
     if (!raw || raw === 'all') return;
+    if ((reportModalityFilter || '').trim()) return;
     if (!exams?.length) return;
     if (filteredExamsForReport.length > 0) return;
 
@@ -1134,6 +1143,7 @@ export function useDashboardData() {
     if (nextEnd !== reportEndDate) setReportEndDate(nextEnd);
   }, [
     reportPartnerFilter,
+    reportModalityFilter,
     exams,
     filteredExamsForReport.length,
     reportStartDate,
@@ -1259,6 +1269,8 @@ export function useDashboardData() {
     setReportEndDate,
     reportPartnerFilter,
     setReportPartnerFilter,
+    reportModalityFilter,
+    setReportModalityFilter,
     reportPartnerLabel,
     isGeneratingPdf,
     setIsGeneratingPdf,
@@ -1319,6 +1331,8 @@ export function useDashboardData() {
     fetchData,
     filterPet,
     setFilterPet,
+    filterExamModality,
+    setFilterExamModality,
     examListDateOrder,
     setExamListDateOrder,
     examListDateFrom,

@@ -2,6 +2,8 @@
 
 Este documento descreve a arquitetura técnica do modelo **Software as a Service (SaaS)** implementado no Petcare, focando no isolamento de dados (Multi-tenancy) e na lógica de compartilhamento entre parceiros.
 
+Requisitos funcionais e não funcionais de produto estão resumidos em [`features.md`](./features.md) (gestão de exames, equipe/parceiros, financeiro, painel Super Admin, UX e performance).
+
 **Última atualização:** Abril 2026
 
 ---
@@ -14,6 +16,7 @@ O sistema utiliza uma abordagem híbrida de multi-tenancy, onde a identidade (Lo
 1.  **Auth Users (`auth.users`):** Identidade única global (E-mail/Senha) gerenciada pelo Supabase Auth.
 2.  **Profiles (`public.profiles`):** Dados públicos do usuário, nível de acesso e permissões modulares.
    - Campos principais: `id`, `email`, `name`, `role`, `level`, `owner_id`, `permissions`, `partners[]`
+   - `role` inclui, entre outros, `admin`, `owner`, `vet`, `clinic`, `reception` (conforme políticas de laudo e telas administrativas).
    - A coluna `partners` é um array de texto (`text[]`) que armazena os IDs dos parceiros vinculados.
 3.  **Tenants (`veterinarians` / `clinics`):** As entidades de negócio que possuem dados (Exames, Preços, Configurações).
    - Cada tenant possui um `profile_id` que vincula ao usuário de login.
@@ -130,7 +133,9 @@ Todas as funções críticas possuem:
 
 O sistema adapta a interface e os documentos gerados com base no contexto do usuário logado.
 
-### Carregamento de Configurações (`SettingsContext`)
+### Carregamento de Configurações (`SettingsContext` e cadastros)
+
+No **backend / dados**, o branding efetivo segue a hierarquia de tenant e `owner_id` descrita abaixo. No **cliente web**, o `SettingsContext` pode persistir preferências de interface (ex.: nome exibido, layout, logo) em `localStorage` (chave `piquet_settings`) em paralelo às fontes de verdade no Supabase, mantendo a experiência responsiva mesmo com latência ou trabalho offline limitado.
 
 1.  **Identificação do Tenant (Branding efetivo):**
     *   Para **assinante raiz** (sem `owner_id` ou `owner_id = id`): busca configurações da tabela correspondente (`veterinarians` ou `clinics`) usando `profile_id = user.id`.
@@ -151,40 +156,39 @@ O sistema adapta a interface e os documentos gerados com base no contexto do usu
     *   **Interface:** Cabeçalho, rodapé e elementos visuais adaptam-se automaticamente.
 
 ### Limpeza de Cache
-O sistema remove automaticamente configurações antigas do `localStorage` (incluindo referências ao nome antigo "Piquet") para garantir que sempre use dados atualizados do banco.
+O cliente pode limpar ou migrar entradas antigas do `localStorage` (incluindo referências legadas ao nome "Piquet") para evitar branding desatualizado em relação ao banco.
 
 ---
 
 ## 5. Sistema de Permissões Modulares
 
-O Petcare implementa um sistema de permissões hierárquico e granular, permitindo controle fino sobre o que cada usuário pode fazer.
+O Petcare combina **nível numérico** (`level`), **papel** (`role`: `admin`, `owner`, `vet`, `clinic`, `reception`) e um objeto **`permissions`** (JSON) persistido em `profiles.permissions`, com defaults aplicados quando o campo vem vazio.
 
-### Estrutura de Permissões
+### Flags em `UserPermissions` (aplicação)
 
-As permissões são organizadas em **níveis principais** e **subníveis**:
+| Flag | Significado |
+|------|-------------|
+| `view_financials` | Ver valores monetários (resumos, tabelas, repasses) |
+| `manage_prices` | Editar tabela de preços |
+| `export_reports` | Gerar relatórios / PDF |
+| `delete_exams` | Excluir exames |
+| `manage_users` | Criar/editar usuários da equipe (quando a tela consulta `profiles`) |
+| `manage_settings` | Acessar configurações gerais / administrativas |
+| `bypass_report_password` | Emitir relatório sem senha de administrador |
+| `bypass_delete_password` | Excluir exame sem senha de administrador |
 
-#### Níveis Principais:
-- `edit_reports`: Laudar/Editar exames
-- `view_financials`: Ver valores monetários
-- `manage_prices`: Editar tabela de preços
-- `export_reports`: Gerar relatórios PDF
-- `delete_exams`: Excluir exames
-- `manage_users`: Criar/Editar usuários
-- `manage_settings`: Acessar configurações
+**Laudos / edição de conteúdo clínico:** além das flags acima, o fluxo de laudo costuma restringir edição a papéis como **veterinário** ou **owner** (recepção e outros perfis ficam em modo predominantemente leitura/exportação, conforme a tela).
 
-#### Subníveis (Opcionais):
-Cada nível principal pode ter subníveis específicos (ex: `visualizar_exames`, `editar_resultados`, `criar_exame` dentro de `edit_reports`).
+### Permissões padrão por nível (referência do app)
 
-### Permissões Padrão por Nível
+Valores típicos ao hidratar o perfil (podem ser sobrescritos pelo JSON em `profiles.permissions`):
 
-- **Nível 1 (Admin):** Acesso total a todas as funcionalidades.
-- **Nível 3 (Veterinário):** Pode laudar, ver financeiro, exportar, excluir, gerenciar usuários. Não pode gerenciar preços ou configurações.
-- **Nível 4 (Clínica):** Pode ver financeiro, gerenciar preços, exportar, excluir, gerenciar usuários. Não pode laudar ou alterar configurações.
-- **Nível 5 (Recepção):** Apenas visualização e exportação básica. Sem acesso a financeiro, laudos ou configurações.
+- **Níveis 1–2 (Admin / Owner):** todas as flags relevantes habilitadas, incluindo bypass de senha e gestão de usuários/configurações.
+- **Nível 3 (Veterinário):** `view_financials`, `export_reports`, `delete_exams` habilitados; `manage_prices` e `manage_settings` em geral desabilitados; `bypass_report_password` habilitado; `bypass_delete_password` e `manage_users` em geral desabilitados.
+- **Nível 4 (Clínica):** perfil semelhante ao veterinário nos defaults atuais do cliente (financeiro e exportação; gestão de preços e configurações dependem de flag explícita ou evolução de produto).
+- **Nível 5 (Recepção):** `export_reports` e `delete_exams` podem estar habilitados; `view_financials`, `manage_prices` e `manage_settings` em geral desabilitados; bypasses em geral desabilitados.
 
-### Permissões de Bypass
-- `bypass_report_password`: Gerar relatório sem senha de admin
-- `bypass_delete_password`: Excluir exame sem senha de admin
+Subníveis adicionais no JSON (ex.: granularidade por módulo) podem ser evoluídos sem quebrar o modelo acima.
 
 ---
 
@@ -192,7 +196,11 @@ Cada nível principal pode ter subníveis específicos (ex: `visualizar_exames`,
 
 O sistema permite que usuários com múltiplos vínculos alternem entre diferentes contextos de trabalho.
 
-### Implementação (`AuthContext`)
+### Camada de aplicação (cliente)
+
+No app atual, o **`RegistryContext`** mantém veterinários e clínicas (cadastro operacional), e o painel identifica o **tenant efetivo** do usuário logado comparando o e-mail da sessão aos registros de `veterinarians` / `clinics`. Vínculos **vet ↔ clínicas** usam listas como `linked_clinic_ids` para filtrar combos e exames de forma consistente. O bloco abaixo descreve a **visão completa SaaS** (multi-contexto e parceiros via `profiles.partners`) quando todas as rotas e estados estão ativos.
+
+### Implementação (`AuthContext` — modelo completo)
 
 1.  **Tenant Atual (`currentTenant`):**
     *   Representa o contexto de trabalho atual (Veterinário ou Clínica).
@@ -233,7 +241,7 @@ Além do tenant principal, existe um **modo de contexto de parceiro** usado no D
 - id: uuid (PK, FK para auth.users)
 - email: text
 - name: text
-- role: text ('admin' | 'vet' | 'clinic' | 'reception')
+- role: text ('admin' | 'owner' | 'vet' | 'clinic' | 'reception')
 - level: integer (1-5)
 - owner_id: uuid (nullable, FK para profiles.id)
 - permissions: jsonb
@@ -278,14 +286,17 @@ As migrações mais recentes (Fevereiro 2025 → Abril 2026) focaram em:
 
 ### Estrutura de Exames
 
-Cada exame contém:
-- **Dados do Paciente:** Nome, espécie (Cachorro, Gato, Outros)
-- **Dados do Requisitante:** Veterinário que solicitou o exame (nome e CRMV) - essencial para o laudo
-- **Vínculos:** Veterinário responsável (executor), Clínica (local), Dono da máquina (para cálculo de repasses)
-- **Modalidade:** USG, RX, RX_CONTROLE, USG_FAST, ou exames personalizados
-- **Período:** Comercial, Noturno, FDS (Fim de Semana), Feriado
-- **Valores Financeiros:** Total, Repasse Profissional, Repasse Clínica
-- **Conteúdo:** Laudo (HTML rico), Imagens anexadas, Status (pending, completed, partial)
+Um registro de exame agrega:
+
+- **Dados do Paciente:** Nome; espécie quando aplicável (Cachorro, Gato, Outros) nos fluxos que preenchem laudo.
+- **Dados do Requisitante:** Veterinário solicitante (nome e CRMV) quando o laudo exige esse cabeçalho.
+- **Vínculos:** Veterinário responsável (executor), Clínica (local), Dono da máquina (`professional` | `clinic`) para cálculo de repasses.
+- **Itens do exame:** Um ou mais itens (`ExamItem`) com modalidade, quantidade de estudos, descrição; em **RX**, estudos detalhados (`rx_studies`: tipos como Abdômen, Crânio, etc., laudo/imagem por estudo).
+- **Modalidade (por item ou principal):** `USG`, `RX`, `RX_CONTROLE`, `USG_FAST`, ou texto livre para modalidades personalizadas.
+- **Período:** `comercial`, `noturno`, `fds`, `feriado`.
+- **Valores Financeiros:** Total, Repasse Profissional, Repasse Clínica.
+- **Conteúdo:** Laudo (HTML rico), imagens anexadas, status (`pending`, `completed`, `partial`).
+- **Lista no painel:** não há coluna “situação” com três estados nomeados em português; quando o laudo está concluído, a linha exibe o selo **OK** (e o botão de laudo passa a “editar”). Outros valores de `status` não aparecem como rótulos fixos na grade.
 
 ### Editor de Laudos
 
@@ -299,7 +310,7 @@ Cada exame contém:
 O sistema calcula automaticamente os repasses baseado em:
 - **Dono da Máquina:** Se é do profissional ou da clínica
 - **Tabela de Preços:** Valores configurados por modalidade e período
-- **Taxas Extras:** Configuráveis por regra de preço
+- **Taxas Extras:** Configuráveis por regra (valor único ou repartição `taxaExtraProfessional` / `taxaExtraClinic`)
 - **Split:** Divisão automática entre profissional e clínica
 
 ---
@@ -311,8 +322,9 @@ O sistema calcula automaticamente os repasses baseado em:
 - **Regras por Clínica:** Cada clínica pode ter sua própria tabela de preços
 - **Regras por Parceiro:** Veterinários podem definir preços diferentes para cada clínica parceira
 - **Modalidades Personalizadas:** Suporte para exames customizados (ex: Ecocardiograma)
-- **Taxas Extras:** Configuração de taxas de uso de equipamento ou deslocamento
-- **Períodos:** Diferentes valores para comercial, noturno, fim de semana e feriado
+- **Taxas Extras:** Configuração de taxas de uso de equipamento ou deslocamento; podem ser decompostas em parte profissional e parte clínica (`taxaExtraProfessional`, `taxaExtraClinic`) além de valor único (`taxaExtra`).
+- **Períodos:** Diferentes valores para comercial, noturno, fim de semana e feriado; rótulos de exibição (`label`, `periodLabel`) por regra quando necessário.
+- **Cópia em massa:** ferramenta de **cópia de tabela de preços** entre parceiros (RF03 em `features.md`) para alinhar precificação sem redigitar regras.
 
 ### Estrutura de PriceRule
 
@@ -322,17 +334,34 @@ O sistema calcula automaticamente os repasses baseado em:
   clinicId: string  // Vincula a regra a uma clínica específica
   modality: Modality
   period: Period | 'all'
+  label: string
+  periodLabel: string
   valor: number
   repasseProfessional: number
   repasseClinic: number
   taxaExtra?: number
+  taxaExtraProfessional?: number
+  taxaExtraClinic?: number
   observacoes: string
 }
 ```
 
 ---
 
-## 10. Considerações de Segurança e Performance
+## 10. Painel Super Admin (gestão de assinantes SaaS)
+
+Área destinada ao **Super Admin** para operar a base multi-tenant (RF04 em `features.md`):
+
+- **CRUD de assinantes:** criação, edição, suspensão e exclusão de clínicas e veterinários.
+- **Visualização hierárquica (tree view):** listagem expansível (estilo diretório) com detalhes operacionais por assinante sem poluir a visão inicial.
+- **Auditoria de parceiros:** ao expandir um assinante, listagem dos parceiros vinculados (clínicas ou veterinários).
+- **Detalhamento de serviços:** serviços configurados por parceiro (modalidade, período, preço final), com mensagens de estado vazio quando não houver vínculos.
+- **Performance:** **lazy loading** — detalhes de parceiros e tabelas de preços são carregados sob demanda, no momento da expansão da linha, reduzindo consultas na carga inicial da página.
+- **Manutenção:** ferramenta de limpeza manual / exclusão definitiva de contas para cenários administrativos controlados.
+
+---
+
+## 11. Considerações de Segurança e Performance
 
 ### Segurança
 
@@ -340,35 +369,36 @@ O sistema calcula automaticamente os repasses baseado em:
 - **Funções blindadas:** Todas as operações críticas usam `SECURITY DEFINER` com `search_path` protegido
 - **Validação de tipos:** Prevenção de erros de casting (UUID vs Text)
 - **Prevenção de duplicidade:** Validações no vínculo de parceiros e criação de usuários
+- **Ações destrutivas:** exclusão de exames, geração de relatórios sensíveis e fluxos equivalentes podem exigir confirmação e, quando configurado, senha de administrador (`bypass_*` para perfis autorizados)
 
 ### Performance
 
 - **Índices:** Criados em colunas frequentemente consultadas (email, profile_id, owner_id)
 - **Queries otimizadas:** Uso de `maybeSingle()` para evitar carregamento desnecessário
 - **Cache inteligente:** Limpeza automática de cache antigo no localStorage
-- **Lazy loading:** Carregamento sob demanda de dados de tenant e configurações
+- **Lazy loading:** Carregamento sob demanda de dados de tenant, configurações e **detalhes no painel Super Admin** (expansão de linha).
+- **Paginação:** listagem de exames pode usar paginação no frontend para limitar memória e tempo de renderização (ver RNF em `features.md`).
 
 ---
 
-## 11. Fluxo de Autenticação e Sessão
+## 12. Fluxo de Autenticação e Sessão
 
 ### Inicialização
 
-1. **Verificação de Sessão:** Sistema verifica se há sessão ativa no Supabase Auth
-2. **Criação de Usuário Temporário:** Cria objeto User baseado em `user_metadata` da sessão
-3. **Tenant Provisório:** Define tenant provisório baseado no perfil do usuário
-4. **Hidratação Completa:** Busca dados completos do perfil na tabela `profiles`
-5. **Carregamento de Tenants:** Busca tenant vinculado e parceiros disponíveis
+1. **Verificação de Sessão:** o cliente verifica sessão ativa no Supabase Auth (`getSession` / `onAuthStateChange`).
+2. **Hidratação do perfil:** com sessão válida, carrega a linha em `profiles` e monta o objeto de usuário (nível, papel, `permissions`).
+3. **Contexto operacional:** telas que dependem de clínica/veterinário combinam perfil com **`RegistryContext`** (e, na arquitetura completa, tenant vinculado e parceiros).
+4. **Listas administrativas:** usuários com `manage_users` podem carregar `profiles` para gestão de equipe.
 
 ### Gerenciamento de Estado
 
-- **AuthContext:** Gerencia estado de autenticação, usuários e tenants
-- **SettingsContext:** Gerencia configurações de branding (White Label)
-- **RegistryContext:** Gerencia cadastros de veterinários e clínicas
-- **Sincronização:** Estados sincronizados via hooks React e atualizações em tempo real
+- **AuthContext:** autenticação, perfil atual e, quando aplicável, lista de usuários para administração.
+- **SettingsContext:** preferências de branding e layout (com persistência local quando usado).
+- **RegistryContext:** cadastros de veterinários e clínicas utilizados no fluxo de exames e vínculos.
+- **Sincronização:** hooks React; atualizações podem refletir mudanças de sessão em tempo real.
 
 ### Tratamento de Erros
 
-- **Modo Offline:** Sistema detecta erros de conexão e ativa modo limitado
-- **Refresh Token:** Tratamento automático de expiração de tokens
-- **Mensagens Claras:** Erros retornam mensagens descritivas para o usuário
+- **Conectividade:** falhas de rede podem limitar operações até nova tentativa ou refresh.
+- **Refresh Token:** renovação automática de sessão pelo cliente Supabase, quando configurado.
+- **Mensagens:** erros de API e validação expostos de forma legível (toasts, modais), alinhado aos RNFs de usabilidade em `features.md`.

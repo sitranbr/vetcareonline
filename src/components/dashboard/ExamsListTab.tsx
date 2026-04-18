@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef } from 'react';
 import { clsx } from 'clsx';
 import { format, parseISO } from 'date-fns';
 import {
@@ -11,11 +12,42 @@ import {
   Edit2,
   Printer,
   Trash2,
+  ChevronDown,
 } from 'lucide-react';
-import { getModalityLabel, formatMoney } from '../../utils/calculations';
+import { getModalityLabel, formatMoney, EXAM_LIST_MODALITY_FILTER_OPTIONS } from '../../utils/calculations';
 import type { DashboardData } from '../../hooks/useDashboardData';
 
+function formatIsoDateToBr(ymd: string): string {
+  if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return '';
+  const [y, m, d] = ymd.split('-');
+  return `${d}/${m}/${y}`;
+}
+
 export function ExamsListTab(props: DashboardData) {
+  const [periodOpen, setPeriodOpen] = useState(false);
+  const periodWrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (periodWrapRef.current && !periodWrapRef.current.contains(e.target as Node)) {
+        setPeriodOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+
+  const hasPeriodFilter = !!(props.examListDateFrom || props.examListDateTo);
+  const periodButtonLabel = (() => {
+    if (!hasPeriodFilter) return 'Período';
+    const a = formatIsoDateToBr(props.examListDateFrom);
+    const b = formatIsoDateToBr(props.examListDateTo);
+    if (a && b) return `${a} – ${b}`;
+    if (a) return `A partir de ${a}`;
+    if (b) return `Até ${b}`;
+    return 'Período';
+  })();
+
   return (
           <div className="p-6">
             {props.showClinicPartnerContextDropdown && (
@@ -61,41 +93,103 @@ export function ExamsListTab(props: DashboardData) {
               </h2>
               <div className="flex flex-col gap-3 w-full md:w-auto md:items-end md:max-w-full">
                 <div className="flex flex-col sm:flex-row flex-wrap gap-2 w-full md:justify-end md:items-center">
-                  <div className="relative flex-1 min-w-[180px] md:w-64 md:max-w-xs">
+                  <div className="relative flex-1 min-w-[180px] md:w-56 md:max-w-xs">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
                       type="text"
-                      placeholder="Buscar paciente..."
+                      placeholder="Paciente, espécie ou tipo de exame…"
                       value={props.filterPet}
                       onChange={e => props.setFilterPet(e.target.value)}
                       className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-petcare-light/50 outline-none"
                     />
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                    <span className="text-xs font-medium text-gray-500 whitespace-nowrap hidden sm:inline">Período:</span>
-                    <div className="flex items-center gap-1.5">
-                      <label htmlFor="exam-list-date-from" className="text-xs text-gray-500 whitespace-nowrap">De</label>
-                      <input
-                        id="exam-list-date-from"
-                        type="date"
-                        value={props.examListDateFrom}
-                        onChange={(e) => props.setExamListDateFrom(e.target.value)}
-                        className="pl-2 pr-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-petcare-light/50 outline-none"
-                      />
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <label htmlFor="exam-list-date-to" className="text-xs text-gray-500 whitespace-nowrap">até</label>
-                      <input
-                        id="exam-list-date-to"
-                        type="date"
-                        value={props.examListDateTo}
-                        onChange={(e) => props.setExamListDateTo(e.target.value)}
-                        className="pl-2 pr-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-petcare-light/50 outline-none"
-                      />
-                    </div>
+                  <div className="w-full sm:w-auto min-w-[200px]">
+                    <label htmlFor="exam-list-modality-filter" className="sr-only">
+                      Filtrar por modalidade
+                    </label>
+                    <select
+                      id="exam-list-modality-filter"
+                      value={props.filterExamModality}
+                      onChange={(e) => props.setFilterExamModality(e.target.value)}
+                      className="w-full pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-petcare-light/50 outline-none cursor-pointer"
+                    >
+                      {EXAM_LIST_MODALITY_FILTER_OPTIONS.map((o) => (
+                        <option key={o.value || 'all'} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Calendar className="w-4 h-4 text-gray-400 hidden sm:block" aria-hidden />
+                  <div className="relative w-full sm:w-auto" ref={periodWrapRef}>
+                    <button
+                      type="button"
+                      id="exam-list-period-trigger"
+                      aria-expanded={periodOpen}
+                      aria-haspopup="dialog"
+                      onClick={() => setPeriodOpen((o) => !o)}
+                      className={clsx(
+                        'w-full sm:w-auto min-w-[160px] flex items-center justify-between gap-2 pl-3 pr-2 py-2 border rounded-lg text-sm text-left bg-white focus:outline-none focus:ring-2 focus:ring-petcare-light/50 transition-colors',
+                        hasPeriodFilter
+                          ? 'border-petcare-DEFAULT/50 bg-petcare-bg/30 text-gray-900'
+                          : 'border-gray-200 text-gray-700 hover:bg-gray-50',
+                      )}
+                    >
+                      <span className="flex items-center gap-2 min-w-0">
+                        <Calendar className="w-4 h-4 text-gray-500 shrink-0" aria-hidden />
+                        <span className="truncate font-medium">{periodButtonLabel}</span>
+                      </span>
+                      <ChevronDown
+                        className={clsx('w-4 h-4 text-gray-400 shrink-0 transition-transform', periodOpen && 'rotate-180')}
+                        aria-hidden
+                      />
+                    </button>
+                    {periodOpen && (
+                      <div
+                        className="absolute right-0 z-40 mt-1.5 w-[min(100vw-2rem,20rem)] rounded-xl border border-gray-200 bg-white p-4 shadow-lg ring-1 ring-black/5"
+                        role="dialog"
+                        aria-labelledby="exam-list-period-trigger"
+                      >
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Filtrar por período</p>
+                        <div className="flex flex-col gap-3">
+                          <div>
+                            <label htmlFor="exam-list-date-from" className="block text-xs text-gray-500 mb-1">
+                              De
+                            </label>
+                            <input
+                              id="exam-list-date-from"
+                              type="date"
+                              value={props.examListDateFrom}
+                              onChange={(e) => props.setExamListDateFrom(e.target.value)}
+                              className="w-full pl-2 pr-2 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-petcare-light/50 outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label htmlFor="exam-list-date-to" className="block text-xs text-gray-500 mb-1">
+                              Até
+                            </label>
+                            <input
+                              id="exam-list-date-to"
+                              type="date"
+                              value={props.examListDateTo}
+                              onChange={(e) => props.setExamListDateTo(e.target.value)}
+                              className="w-full pl-2 pr-2 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-petcare-light/50 outline-none"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            className="text-sm text-petcare-dark hover:underline self-start"
+                            onClick={() => {
+                              props.setExamListDateFrom('');
+                              props.setExamListDateTo('');
+                            }}
+                          >
+                            Limpar datas
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
                     <label htmlFor="exam-list-date-order" className="sr-only">Ordenar exames por data</label>
                     <select
                       id="exam-list-date-order"

@@ -132,6 +132,10 @@
     <strong style="color:var(--accent5)">Nota:</strong> blocos mais abaixo que mencionam <em>clinic_memberships</em>, <em>clinic_partnerships</em> e <em>partner_invites</em> são <strong>legado (v2)</strong>.
     Eles ficam aqui apenas como histórico visual, mas <strong>não representam</strong> o modelo vigente.
   </div>
+  <div class="partner-intro" style="margin-top:1rem;border-color:rgba(210,168,255,0.35);background:rgba(210,168,255,0.05)">
+    <strong style="color:var(--accent4)">Exames (Petcare — vigente):</strong> no Supabase, os exames ficam na tabela <strong>exams</strong> (ver <strong>sass.md</strong>). O campo <code style="color:var(--text)">status</code> é opcional e, no código, aceita <code style="color:var(--text)">pending</code>, <code style="color:var(--text)">completed</code> ou <code style="color:var(--text)">partial</code>.
+    <strong>Não há</strong>, na lista de exames do painel, coluna ou rótulos em português do tipo “em andamento / pronto / parcial”. O que a interface mostra hoje é um <strong>selo OK</strong> (tooltip “Laudo Pronto”) quando <code style="color:var(--text)">status = completed</code>, e o botão de laudo muda entre “criar” e “editar” conforme o caso; demais valores de <code style="color:var(--text)">status</code> não aparecem como três estados nomeados na grade.
+  </div>
 </div>
 
 <div class="tabs">

@@ -5,9 +5,29 @@ import { executorMatchesPartnerRoot, resolveClinicEntityIdForPartnerProfile } fr
 
 type PartnerVetRow = { id: string; profileId: string; ownerId?: string };
 
+function examMatchesListTextSearch(e: Exam, raw: string): boolean {
+  const q = raw.trim().toLowerCase();
+  if (!q) return true;
+  const modalityLabel = getModalityLabel(e.modality as Modality, e.modality === 'OUTROS' ? e.studyDescription : undefined);
+  const haystack = [
+    e.petName,
+    e.species,
+    modalityLabel,
+    String(e.modality ?? ''),
+    e.studyDescription,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(q);
+}
+
 export function deriveFilteredExamsForList(params: {
   exams: Exam[];
-  filterPet: string;
+  /** Texto livre: paciente, espécie, nome amigável do exame, código ou descrição customizada. */
+  filterListText: string;
+  /** Código de modalidade (ex.: USG) ou vazio para todas. */
+  filterExamModality: string;
   examListDateOrder: 'desc' | 'asc';
   examListDateFrom: string;
   examListDateTo: string;
@@ -28,7 +48,8 @@ export function deriveFilteredExamsForList(params: {
 }): Exam[] {
   const {
     exams,
-    filterPet,
+    filterListText,
+    filterExamModality,
     examListDateOrder,
     examListDateFrom,
     examListDateTo,
@@ -55,8 +76,8 @@ export function deriveFilteredExamsForList(params: {
   }
 
   const filtered = exams.filter((e) => {
-    const petOk = e.petName.toLowerCase().includes(filterPet.toLowerCase());
-    if (!petOk) return false;
+    if (!examMatchesListTextSearch(e, filterListText)) return false;
+    if (filterExamModality && String(e.modality ?? '') !== filterExamModality) return false;
     const parsed = parseISO(e.date);
     if (!isValid(parsed)) return true;
     const dayStr = format(parsed, 'yyyy-MM-dd');
@@ -139,6 +160,8 @@ export function deriveFilteredExamsForReport(params: {
   exams: Exam[];
   reportStartDate: string;
   reportEndDate: string;
+  /** Código de modalidade (ex.: USG) ou vazio para todos os exames. */
+  reportModalityFilter: string;
   reportPartnerFilter: string;
   availableVeterinarians: { id: string; profileId?: string | null }[];
   reportVetFilterTeam: Set<string> | null;
@@ -153,6 +176,7 @@ export function deriveFilteredExamsForReport(params: {
     exams,
     reportStartDate,
     reportEndDate,
+    reportModalityFilter,
     reportPartnerFilter,
     availableVeterinarians,
     reportVetFilterTeam,
@@ -167,6 +191,10 @@ export function deriveFilteredExamsForReport(params: {
   const filtered = exams.filter((e) => {
     const d = e.date;
     if (d < reportStartDate || d > reportEndDate) return false;
+
+    if (reportModalityFilter && String(e.modality ?? '') !== reportModalityFilter) {
+      return false;
+    }
 
     if (reportPartnerFilter !== 'all') {
       const [type, id] = reportPartnerFilter.split('|');

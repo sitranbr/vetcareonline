@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orçamento e cronograma — Sistema de Exames Veterinários (SaaS)</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,wght@0,300;0,600;1,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #21262d;
+    --accent: #3fb950; --accent2: #58a6ff; --accent3: #f78166;
+    --accent4: #d2a8ff; --accent5: #ffa657; --partner: #39d0d8; --price: #e8c84a;
+    --text: #e6edf3; --muted: #7d8590; --card: #1c2128;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; min-height: 100vh; padding: 2rem; line-height: 1.65; }
+  header { text-align: center; margin-bottom: 2.5rem; max-width: 900px; margin-left: auto; margin-right: auto; }
+  header h1 { font-family: 'Fraunces', serif; font-weight: 600; font-size: 2rem; letter-spacing: -0.02em; }
+  header h1 span { color: var(--accent); }
+  header p { color: var(--muted); font-size: 0.78rem; margin-top: 0.5rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  .wrap { max-width: 1040px; margin: 0 auto; }
+
+  .intro {
+    background: rgba(57,208,216,0.06);
+    border: 1px solid rgba(57,208,216,0.28);
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 2rem;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+  .intro strong { color: var(--partner); }
+  .intro a { color: var(--accent2); }
+
+  h2 {
+    font-family: 'Fraunces', serif;
+    font-weight: 300;
+    font-style: italic;
+    font-size: 1.05rem;
+    color: var(--muted);
+    margin: 2rem 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  table.data {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.72rem;
+    margin-bottom: 1.5rem;
+  }
+  table.data th, table.data td {
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--border);
+    text-align: left;
+    vertical-align: top;
+  }
+  table.data th {
+    background: var(--surface);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 0.65rem;
+  }
+  table.data tbody tr:hover td { background: rgba(63,185,80,0.04); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .phase { color: var(--accent2); font-weight: 500; }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin: 1.5rem 0 2rem;
+  }
+  .summary-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 1.1rem 1.2rem;
+  }
+  .summary-card .label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.35rem; }
+  .summary-card .value { font-size: 1.35rem; font-weight: 500; color: var(--accent); }
+  .summary-card .sub { font-size: 0.68rem; color: var(--muted); margin-top: 0.35rem; }
+
+  .gantt {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 0;
+    font-size: 0.68rem;
+    border: 1px solid var(--border);
+    margin-bottom: 2rem;
+    overflow-x: auto;
+  }
+  .gantt-row {
+    display: contents;
+  }
+  .gantt-row > div {
+    padding: 0.45rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    background: var(--card);
+  }
+  .gantt-row:last-child > div { border-bottom: none; }
+  .gantt-head { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; background: var(--surface) !important; }
+  .bar {
+    height: 22px;
+    border-radius: 2px;
+    margin: 2px 0;
+    opacity: 0.92;
+  }
+  .b1 { background: linear-gradient(90deg, rgba(88,166,255,0.5), rgba(88,166,255,0.85)); }
+  .b2 { background: linear-gradient(90deg, rgba(210,168,255,0.4), rgba(210,168,255,0.8)); }
+  .b3 { background: linear-gradient(90deg, rgba(247,129,102,0.35), rgba(247,129,102,0.75)); }
+  .b4 { background: linear-gradient(90deg, rgba(232,200,74,0.35), rgba(232,200,74,0.75)); }
+  .b5 { background: linear-gradient(90deg, rgba(57,208,216,0.35), rgba(57,208,216,0.8)); }
+  .b6 { background: linear-gradient(90deg, rgba(63,185,80,0.35), rgba(63,185,80,0.8)); }
+
+  ul.notes { font-size: 0.74rem; color: var(--muted); margin: 0.5rem 0 1.5rem 1.2rem; }
+  ul.notes li { margin-bottom: 0.35rem; }
+
+  footer {
+    text-align: center;
+    margin-top: 2.5rem;
+    color: var(--muted);
+    font-size: 0.65rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Orçamento &amp; <span>cronograma</span></h1>
+  <p>Projeto SaaS multi-tenant · exames veterinários · parcerias e precificação — referência modelagem (Abr/2026)</p>
+</header>
+
+<div class="wrap">
+
+  <div class="intro">
+    <strong>Base de escopo:</strong> este orçamento assume o porte funcional e de dados descrito em <a href="./modelagem.html">modelagem.html</a>
+    (identidade Supabase, <code>profiles</code> e tenants, exames e laudos, tabela de preços com regras e repasses, rede de parcerias, papéis e permissões, painel operacional).
+    Valores são <strong>estimativas de esforço de desenvolvimento</strong> (não incluem custos recorrentes de infraestrutura, licenças de terceiros nem design gráfico dedicado).
+    <br><br>
+    <strong>Taxa horária considerada:</strong> R$ 100,00/h para programadores <strong>frontend e backend</strong> (mesma base para ambos os perfis nesta planilha).
+  </div>
+
+  <h2>1. Premissas de planejamento</h2>
+  <ul class="notes">
+    <li>Equipe mínima viável para o cronograma abaixo: <strong>2 desenvolvedores full-stack</strong> (ou 1 sênior + 1 pleno) com sobreposição de competências em React/TypeScript e Supabase/PostgreSQL.</li>
+    <li>Carga útil média: <strong>~120 h/mês por desenvolvedor</strong> (já descontando reuniões, code review e imprevistos leves).</li>
+    <li>Escopo “modelagem” inclui complexidade de <strong>RLS</strong>, <strong>multi-tenant</strong> e fluxos de parceiro; não inclui aplicativo mobile nativo.</li>
+    <li>Contingência de escopo: linha separada (15% sobre horas-base de desenvolvimento).</li>
+  </ul>
+
+  <h2>2. Fases, entregas e horas estimadas</h2>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Fase</th>
+        <th>Entregas principais (alinhadas à modelagem)</th>
+        <th class="num">Horas (min.)</th>
+        <th class="num">Horas (máx.)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="phase">0 · Descoberta</td>
+        <td>Refino de requisitos, critérios de aceite, mapa de telas, alinhamento com entidades do ER (clínicas, usuários, tutores/animais, tipos de exame).</td>
+        <td class="num">32</td>
+        <td class="num">48</td>
+      </tr>
+      <tr>
+        <td class="phase">1 · Fundação SaaS</td>
+        <td>Auth, <code>profiles</code>, tenants (veterinários/clínicas), RLS inicial, convites e recuperação de senha, ambiente e pipelines básicos.</td>
+        <td class="num">96</td>
+        <td class="num">140</td>
+      </tr>
+      <tr>
+        <td class="phase">2 · Núcleo de exames</td>
+        <td>CRUD de exames, itens e modalidades (incl. RX por estudo), vínculos operacionais (vet, clínica, dono de equipamento), status e fluxo de laudo.</td>
+        <td class="num">120</td>
+        <td class="num">168</td>
+      </tr>
+      <tr>
+        <td class="phase">3 · Laudo &amp; PDF</td>
+        <td>Editor rich text, imagens, geração de PDF, branding / white label conforme tenant.</td>
+        <td class="num">48</td>
+        <td class="num">72</td>
+      </tr>
+      <tr>
+        <td class="phase">4 · Precificação</td>
+        <td>Regras de preço por escopo (clínica/vet), períodos (comercial, noturno, fds, feriado), repasses e validações de UI (filtros sem vazamento).</td>
+        <td class="num">72</td>
+        <td class="num">104</td>
+      </tr>
+      <tr>
+        <td class="phase">5 · Parcerias</td>
+        <td>Vínculos entre perfis (<code>partners</code>), RPCs, convites por e-mail, recortes de dashboard e regras de visibilidade entre tenants.</td>
+        <td class="num">88</td>
+        <td class="num">128</td>
+      </tr>
+      <tr>
+        <td class="phase">6 · Painel &amp; relatórios</td>
+        <td>Lista de exames (filtros, busca, período), relatórios e gráficos, painel Super Admin (assinantes).</td>
+        <td class="num">96</td>
+        <td class="num">136</td>
+      </tr>
+      <tr>
+        <td class="phase">7 · Qualidade &amp; go-live</td>
+        <td>Testes integrados, hardening de segurança, ajustes de performance, documentação operacional, deploy e hypercare inicial.</td>
+        <td class="num">64</td>
+        <td class="num">96</td>
+      </tr>
+      <tr>
+        <td colspan="2"><strong>Subtotal desenvolvimento (soma das faixas)</strong></td>
+        <td class="num"><strong>616</strong></td>
+        <td class="num"><strong>892</strong></td>
+      </tr>
+      <tr>
+        <td colspan="2"><strong>Baseline comercial</strong> — ponto médio entre min. e máx.: <strong>(616 + 892) ÷ 2 = 754 h</strong> de desenvolvimento.</td>
+        <td class="num" colspan="2" style="text-align:center">754 h</td>
+      </tr>
+      <tr>
+        <td colspan="2">Contingência (15% sobre 754 h)</td>
+        <td class="num" colspan="2" style="text-align:center">113 h</td>
+      </tr>
+      <tr>
+        <td colspan="2"><strong>Total referência (dev + contingência)</strong></td>
+        <td class="num" colspan="2" style="text-align:center"><strong>867 h</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p style="font-size:0.72rem;color:var(--muted);margin-bottom:1rem;">
+    A linha <em>754 h</em> é o ponto médio do intervalo 616–892 h; a contingência cobre desvios em relação a esse centro.
+  </p>
+
+  <h2>3. Resumo financeiro (hora técnica R$ 100,00)</h2>
+  <div class="summary-grid">
+    <div class="summary-card">
+      <div class="label">Desenvolvimento (754 h × R$ 100)</div>
+      <div class="value">R$ 75.400</div>
+      <div class="sub">Frontend + backend, conforme fases acima.</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Contingência (113 h × R$ 100)</div>
+      <div class="value">R$ 11.300</div>
+      <div class="sub">Escopo emergente, integrações e retrabalho controlado.</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Total referência do projeto</div>
+      <div class="value">R$ 86.700</div>
+      <div class="sub">867 h × R$ 100,00 (faixa indicativa).</div>
+    </div>
+  </div>
+
+  <p style="font-size:0.74rem;color:var(--muted);margin-bottom:1.5rem;">
+    <strong>Faixa alternativa (sem fixar 720 h):</strong> aplicando R$ 100/h diretamente aos extremos da soma das fases — <strong>R$ 61.600</strong> (616 h) a <strong>R$ 89.200</strong> (892 h), mais contingência 15% se desejado.
+  </p>
+
+  <h2>4. Cronograma indicativo (2 desenvolvedores)</h2>
+  <p style="font-size:0.74rem;color:var(--muted);margin-bottom:0.75rem;">
+    Com ~240 h/mês de capacidade líquida da dupla (2 × 120 h), <strong>754 h ≈ 3,1 meses de calendário</strong> em ritmo sustentado.
+    Incluindo <strong>113 h de contingência</strong> (total <strong>867 h</strong>), perfaz <strong>~3,6 meses</strong>. A barra abaixo distribui as fases de forma sequencial/overlap ilustrativa (não é diagrama de Gantt proporcional ao dia).
+  </p>
+
+  <div class="gantt">
+    <div class="gantt-row gantt-head">
+      <div>Fase</div>
+      <div>Linha do tempo (M1 · M2 · M3 · M4)</div>
+    </div>
+    <div class="gantt-row">
+      <div>0–1 Fundação</div>
+      <div><div class="bar b1" style="width:38%"></div></div>
+    </div>
+    <div class="gantt-row">
+      <div>2–3 Exames &amp; laudo/PDF</div>
+      <div><div class="bar b2" style="width:55%;margin-left:12%"></div></div>
+    </div>
+    <div class="gantt-row">
+      <div>4 Precificação</div>
+      <div><div class="bar b4" style="width:32%;margin-left:38%"></div></div>
+    </div>
+    <div class="gantt-row">
+      <div>5 Parcerias</div>
+      <div><div class="bar b5" style="width:40%;margin-left:48%"></div></div>
+    </div>
+    <div class="gantt-row">
+      <div>6 Painel &amp; relatórios</div>
+      <div><div class="bar b3" style="width:42%;margin-left:52%"></div></div>
+    </div>
+    <div class="gantt-row">
+      <div>7 QA &amp; go-live</div>
+      <div><div class="bar b6" style="width:28%;margin-left:72%"></div></div>
+    </div>
+  </div>
+
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Cenário</th>
+        <th>Capacidade líquida / mês</th>
+        <th class="num">867 h (total c/ contingência)</th>
+        <th class="num">Prazo calendário aprox.</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>2 devs (cenário base deste documento)</td>
+        <td>~240 h/mês</td>
+        <td class="num">867 h</td>
+        <td class="num"><strong>3,5 a 4 meses</strong></td>
+      </tr>
+      <tr>
+        <td>1 dev full-stack</td>
+        <td>~120 h/mês</td>
+        <td class="num">867 h</td>
+        <td class="num"><strong>7 a 7,5 meses</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>5. Exclusões e observações</h2>
+  <ul class="notes">
+    <li>Não inclui: identidade visual completa (UI/UX design contratado aparte), marketing, jurídico (contratos, LGPD fora do escopo técnico mínimo), suporte 24/7.</li>
+    <li>Infraestrutura (Supabase, domínio, e-mail transacional): custos mensais variáveis — orçar à parte.</li>
+    <li>Implementações marcadas como <strong>legado</strong> em <em>modelagem.html</em> (ex.: certas tabelas v2) podem ser omitidas ou priorizadas em fase 2, reduzindo horas se o cliente adotar apenas o modelo vigente em <em>sass.md</em>.</li>
+    <li>Reajuste de valores: índice ou taxa horária deve ser acordado para contratos com prazo &gt; 90 dias.</li>
+  </ul>
+
+</div>
+
+<footer>
+  Documento interno de planejamento · Petcare / exames veterinários · Abril 2026
+</footer>
+
+</body>
+</html>
