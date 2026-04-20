@@ -14,15 +14,22 @@ jobs:
           host: ${{ secrets.DROPLET_HOST }}
           username: ${{ secrets.DROPLET_USER }}
           key: ${{ secrets.DROPLET_SSH_KEY }}
+          # O build (`vite build`) pode demorar em Droplets pequenos.
+          # Aumenta o tempo limite do comando e do SSH para evitar "Run Command Timeout".
+          command_timeout: 30m
+          timeout: 2m
           script: |
             set -e
 
             cd /opt/petcare_source/vetcareonline
+
+            # Evita erro "detected dubious ownership" no deploy via SSH
+            git config --global --add safe.directory /opt/petcare_source/vetcareonline
             git fetch --all
             git reset --hard origin/main
 
             npm ci
-            npm run build
+            NODE_OPTIONS="--max-old-space-size=2048" npm run build
 
             # Publica o build do Vite (dist/) na pasta servida pelo Nginx (root)
             sudo mkdir -p /var/www/medvetpiquet.com.br/painel
