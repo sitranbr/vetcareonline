@@ -23,6 +23,8 @@ jobs:
       - name: Build (Vite)
         env:
           NODE_OPTIONS: --max-old-space-size=4096
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: npm run build
 
       # Envia apenas o dist/ para o servidor (evita OOM no Droplet)
@@ -47,9 +49,17 @@ jobs:
           script: |
             set -e
 
-            sudo mkdir -p /var/www/medvetpiquet.com.br/painel
-            sudo rsync -av --delete /tmp/vetcareonline-dist/ /var/www/medvetpiquet.com.br/painel/
-            sudo rm -rf /tmp/vetcareonline-dist
+            # Em GitHub Actions não há TTY; se o usuário não tiver sudo sem senha, o deploy falha.
+            # Se estiver logado como root, SUDO fica vazio; caso contrário usa "sudo -n" (sem prompt).
+            if [ "$(id -u)" -eq 0 ]; then
+              SUDO=""
+            else
+              SUDO="sudo -n"
+            fi
 
-            sudo nginx -t
-            sudo systemctl reload nginx
+            $SUDO mkdir -p /var/www/medvetpiquet.com.br/painel
+            $SUDO rsync -av --delete /tmp/vetcareonline-dist/ /var/www/medvetpiquet.com.br/painel/
+            $SUDO rm -rf /tmp/vetcareonline-dist
+
+            $SUDO nginx -t
+            $SUDO systemctl reload nginx
