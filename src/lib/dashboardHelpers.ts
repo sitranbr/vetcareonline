@@ -27,27 +27,39 @@ export const normalizePriceRuleScopeId = (id?: string | null) =>
 
 /**
  * Chave lógica de unicidade: escopo (clínica + vet) + modalidade + período.
- * Duas regras com o mesmo label mas escopo/modalidade/período iguais contam como duplicata.
+ * Para modalidade OUTROS, o nome (`label`) entra na chave — dois exames personalizados
+ * distintos no mesmo parceiro/período são permitidos.
  */
 export const priceRuleDuplicateKey = (r: {
   clinicId?: string | null;
   veterinarianId?: string | null;
   modality?: string | null;
   period?: string | null;
-}) =>
-  `${normalizePriceRuleScopeId(r.clinicId)}|${normalizePriceRuleScopeId(r.veterinarianId)}|${String(r.modality ?? '').trim()}|${String(r.period ?? '').trim()}`;
+  label?: string | null;
+}) => {
+  const mod = String(r.modality ?? '').trim();
+  const period = String(r.period ?? '').trim();
+  const base = `${normalizePriceRuleScopeId(r.clinicId)}|${normalizePriceRuleScopeId(r.veterinarianId)}|${mod}|${period}`;
+  if (mod === 'OUTROS') {
+    const lab = String(r.label ?? '').trim().toLowerCase();
+    return `${base}|${lab}`;
+  }
+  return base;
+};
 
 export const priceRuleDuplicateKeyFromMappedInsert = (r: {
   clinic_id?: string | null;
   veterinarian_id?: string | null;
   modality?: string | null;
   period?: string | null;
+  label?: string | null;
 }) =>
   priceRuleDuplicateKey({
     clinicId: r.clinic_id,
     veterinarianId: r.veterinarian_id,
     modality: r.modality,
     period: r.period,
+    label: r.label,
   });
 
 /** Regra sem clínica específica (vale para qualquer clínica no cálculo; não deve misturar ao filtrar uma clínica). */

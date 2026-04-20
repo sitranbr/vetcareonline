@@ -34,6 +34,7 @@ import {
   deriveAvailableExamsForSelectedClinic,
   deriveAvailablePeriods,
   deriveVetHasAtLeastOnePricedRule,
+  EXAM_FORM_OUTROS_NEW_VALUE,
 } from './dashboard/examFormPricing';
 import { findDuplicatePriceRule, buildPriceTableExamOptions } from './dashboard/priceTableHelpers';
 import {
@@ -134,7 +135,6 @@ export function useDashboardData() {
 
   const [priceForm, setPriceForm] = useState<Partial<PriceRule>>({ clinicId: '', veterinarianId: '', modality: 'USG', period: 'comercial', valor: undefined, repasseProfessional: undefined, repasseClinic: undefined, taxaExtra: undefined, taxaExtraProfessional: undefined, taxaExtraClinic: undefined, observacoes: '' });
   const [customModalityName, setCustomModalityName] = useState('');
-  const [selectedClinicFilter, setSelectedClinicFilter] = useState<string>('');
   /** Filtros da listagem da tabela de preÃ§os (perÃ­odo / veterinÃ¡rio / exame). */
   const [priceTablePeriodFilter, setPriceTablePeriodFilter] = useState<string>('');
   const [priceTableVetFilter, setPriceTableVetFilter] = useState<string>('');
@@ -481,6 +481,8 @@ export function useDashboardData() {
   const [filterPet, setFilterPet] = useState('');
   /** Filtro explícito por código de modalidade (lista suspensa); vazio = todas. */
   const [filterExamModality, setFilterExamModality] = useState('');
+  /** Filtro da coluna Máquina na listagem; vazio = todas. */
+  const [filterExamListMachineOwner, setFilterExamListMachineOwner] = useState<MachineOwner | ''>('');
   /** Ordenação da lista de exames por data (mais recente = padrão, alinhado ao carregamento atual). */
   const [examListDateOrder, setExamListDateOrder] = useState<'desc' | 'asc'>('desc');
   /** Filtro por intervalo de datas do exame (campo date); vazio = sem limite naquele extremo. */
@@ -580,8 +582,15 @@ export function useDashboardData() {
   /** Veterinário com "Sem clínica" explícito: não herdar filtro da lista (evita repasse indevido à clínica). */
   const vetChoseNoClinic =
     loggedUserEntity?.type === 'vet' && !(formData.clinicId || '').trim();
+  const priceTableClinicIdFromPartnerFilter = (() => {
+    const f = (priceTableVetFilter || '').trim();
+    if (f.startsWith('clinic|')) return f.slice(7).trim();
+    return '';
+  })();
   if (!vetChoseNoClinic) {
-    if (!effectiveClinicId && selectedClinicFilter) effectiveClinicId = selectedClinicFilter;
+    if (!effectiveClinicId && priceTableClinicIdFromPartnerFilter) {
+      effectiveClinicId = priceTableClinicIdFromPartnerFilter;
+    }
     if (!effectiveClinicId && loggedUserEntity?.type === 'clinic') effectiveClinicId = loggedUserEntity.id;
   }
   if (!effectiveClinicId) effectiveClinicId = '';
@@ -609,6 +618,7 @@ export function useDashboardData() {
     () =>
       deriveAvailableExamsForSelectedClinic({
         priceRules,
+        priorExams: exams,
         effectiveClinicId,
         effectiveVeterinarianId,
         effectiveOwnerVetId,
@@ -617,6 +627,7 @@ export function useDashboardData() {
       }),
     [
       priceRules,
+      exams,
       effectiveClinicId,
       effectiveVeterinarianId,
       effectiveOwnerVetId,
@@ -667,13 +678,30 @@ export function useDashboardData() {
   useEffect(() => {
     if (activeTab !== 'form') return;
     setFormData((prev) => {
-      const opts = availableExamsForSelectedClinic;
+      const draftOutros = prev.items
+        .filter((i) => i.modality === 'OUTROS' && (i.studyDescription || '').trim())
+        .map((i) => {
+          const name = (i.studyDescription || '').trim();
+          return { value: `OUTROS|${name}`, label: name, isCustom: true as const };
+        });
+      const seen = new Set(availableExamsForSelectedClinic.map((o) => o.value));
+      const mergedOpts = [...availableExamsForSelectedClinic];
+      draftOutros.forEach((d) => {
+        if (!seen.has(d.value)) {
+          mergedOpts.push(d);
+          seen.add(d.value);
+        }
+      });
       let changed = false;
       const nextItems = prev.items.map((item) => {
         if (!item.modality) return item;
         const currentValue =
-          item.modality === 'OUTROS' ? `OUTROS|${item.studyDescription || ''}` : item.modality;
-        const valid = opts.some((opt) => opt.value === currentValue);
+          item.modality === 'OUTROS'
+            ? (item.studyDescription || '').trim()
+              ? `OUTROS|${(item.studyDescription || '').trim()}`
+              : EXAM_FORM_OUTROS_NEW_VALUE
+            : item.modality;
+        const valid = mergedOpts.some((opt) => opt.value === currentValue);
         if (!valid) {
           changed = true;
           return {
@@ -722,6 +750,14 @@ export function useDashboardData() {
 
     if (!editingExamId && isIndependentVetSubscriber && !vetHasAtLeastOnePricedRule) {
       alert('Antes de cadastrar um exame, Ã© necessÃ¡rio definir o preÃ§o de pelo menos um tipo de exame.');
+      return;
+    }
+
+    const outrosSemNome = formData.items.find(
+      (it) => it.modality === 'OUTROS' && !(it.studyDescription || '').trim(),
+    );
+    if (outrosSemNome) {
+      alert('Informe o nome do exame personalizado quando selecionar "Outro (Novo Exame)".');
       return;
     }
 
@@ -982,6 +1018,7 @@ export function useDashboardData() {
         exams,
         filterListText: filterPet,
         filterExamModality,
+        filterListMachineOwner: filterExamListMachineOwner,
         examListDateOrder,
         examListDateFrom,
         examListDateTo,
@@ -1002,6 +1039,7 @@ export function useDashboardData() {
       exams,
       filterPet,
       filterExamModality,
+      filterExamListMachineOwner,
       examListDateOrder,
       examListDateFrom,
       examListDateTo,
@@ -1058,7 +1096,7 @@ export function useDashboardData() {
 
   useEffect(() => {
     setExamListPage(1);
-  }, [filterPet, filterExamModality, examListDateOrder, examListDateFrom, examListDateTo]);
+  }, [filterPet, filterExamModality, filterExamListMachineOwner, examListDateOrder, examListDateFrom, examListDateTo]);
 
   useEffect(() => {
     setExamListPage((p) => Math.min(p, examListTotalPages));
@@ -1234,6 +1272,7 @@ export function useDashboardData() {
         priceForm,
         editingPrice,
         priceRules,
+        customModalityName,
       }),
     [
       priceRules,
@@ -1241,6 +1280,8 @@ export function useDashboardData() {
       priceForm.veterinarianId,
       priceForm.modality,
       priceForm.period,
+      priceForm.label,
+      customModalityName,
       editingPrice,
     ],
   );
@@ -1297,8 +1338,6 @@ export function useDashboardData() {
     setPriceForm,
     customModalityName,
     setCustomModalityName,
-    selectedClinicFilter,
-    setSelectedClinicFilter,
     priceTablePeriodFilter,
     setPriceTablePeriodFilter,
     priceTableVetFilter,
@@ -1335,6 +1374,8 @@ export function useDashboardData() {
     setFilterPet,
     filterExamModality,
     setFilterExamModality,
+    filterExamListMachineOwner,
+    setFilterExamListMachineOwner,
     examListDateOrder,
     setExamListDateOrder,
     examListDateFrom,

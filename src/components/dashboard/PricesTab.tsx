@@ -2,9 +2,7 @@ import { Modal } from '../../components/Modal';
 import {
   Tag,
   Plus,
-  Calendar,
   Users,
-  FileText,
   Building2,
   Stethoscope,
   Edit2,
@@ -31,35 +29,19 @@ export function PricesTab(props: DashboardData) {
                   Tabela de Preços
                 </h2>
                 <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
-                  {(props.loggedUserEntity?.type === 'vet' || props.currentTenant?.type === 'vet') && props.clinicsForPriceTableFilter.length > 0 && (
-                    <>
-                      {(() => {
-                        const isGuest = props.user?.ownerId && props.user.ownerId !== props.user.id;
-                        if (isGuest && props.clinicsForPriceTableFilter.length === 1) {
-                          return (
-                            <div className="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 text-gray-600">
-                              {props.clinicsForPriceTableFilter[0]?.name || 'Clínica'}
-                            </div>
-                          );
-                        }
+                  {(props.loggedUserEntity?.type === 'vet' || props.currentTenant?.type === 'vet') &&
+                    props.clinicsForPriceTableFilter.length > 0 &&
+                    (() => {
+                      const isGuest = props.user?.ownerId && props.user.ownerId !== props.user.id;
+                      if (isGuest && props.clinicsForPriceTableFilter.length === 1) {
                         return (
-                          <div className="flex flex-col gap-1">
-                            <select
-                              value={props.selectedClinicFilter}
-                              onChange={(e) => props.setSelectedClinicFilter(e.target.value)}
-                              className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-petcare-DEFAULT focus:border-petcare-DEFAULT bg-white"
-                              aria-label="Filtrar regras por clínica parceira"
-                            >
-                              <option value="">Todas as Clínicas</option>
-                              {props.clinicsForPriceTableFilter.map(c => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                              ))}
-                            </select>
+                          <div className="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 text-gray-600">
+                            {props.clinicsForPriceTableFilter[0]?.name || 'Clínica'}
                           </div>
                         );
-                      })()}
-                    </>
-                  )}
+                      }
+                      return null;
+                    })()}
                   {props.loggedUserEntity?.type === 'clinic' && (
                     <div className="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 text-gray-600">
                       {props.currentTenant?.name || 'Clínica Atual'}
@@ -73,25 +55,8 @@ export function PricesTab(props: DashboardData) {
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-stretch sm:items-center p-3 bg-gray-50/80 rounded-xl border border-gray-100">
-                <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-initial sm:min-w-[200px]">
-                  <Calendar className="w-4 h-4 text-gray-500 shrink-0" aria-hidden />
-                  <label htmlFor="price-table-period-filter" className="sr-only">Filtrar por período</label>
-                  <select
-                    id="price-table-period-filter"
-                    value={props.priceTablePeriodFilter}
-                    onChange={(e) => props.setPriceTablePeriodFilter(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:ring-2 focus:ring-petcare-light/50 outline-none"
-                  >
-                    <option value="">Todos os períodos</option>
-                    <option value="comercial">{getPeriodLabel('comercial')}</option>
-                    <option value="noturno">{getPeriodLabel('noturno')}</option>
-                    <option value="fds">{getPeriodLabel('fds')}</option>
-                    <option value="feriado">{getPeriodLabel('feriado')}</option>
-                  </select>
-                </div>
-
-                {props.priceTablePartnerFilterOptions.length > 1 && (
+              {props.priceTablePartnerFilterOptions.length > 1 && (
+                <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-stretch sm:items-center p-3 bg-gray-50/80 rounded-xl border border-gray-100">
                   <div className="flex flex-col gap-1 min-w-0 flex-1 sm:flex-initial sm:min-w-[240px]">
                     <div className="flex items-center gap-2 min-w-0">
                       <Users className="w-4 h-4 text-gray-500 shrink-0" aria-hidden />
@@ -113,32 +78,49 @@ export function PricesTab(props: DashboardData) {
                       </select>
                     </div>
                   </div>
-                )}
-
-                <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-initial sm:min-w-[200px]">
-                  <FileText className="w-4 h-4 text-gray-500 shrink-0" aria-hidden />
-                  <label htmlFor="price-table-exam-filter" className="sr-only">Filtrar por exame ou modalidade</label>
-                  <select
-                    id="price-table-exam-filter"
-                    value={props.priceTableExamFilter}
-                    onChange={(e) => props.setPriceTableExamFilter(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white text-gray-700 focus:ring-2 focus:ring-petcare-light/50 outline-none"
-                  >
-                    <option value="">Todos os exames</option>
-                    {props.priceTableExamOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
                 </div>
-              </div>
+              )}
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead className="bg-gray-50 text-xs uppercase text-gray-500 font-semibold">
                   <tr>
-                    <th className="p-3">Modalidade</th>
-                    <th className="p-3">Período</th>
+                    <th className="p-3 align-middle whitespace-nowrap min-w-[10rem]">
+                      <label htmlFor="price-table-exam-filter" className="sr-only">
+                        Filtrar por exame ou modalidade
+                      </label>
+                      <select
+                        id="price-table-exam-filter"
+                        value={props.priceTableExamFilter}
+                        onChange={(e) => props.setPriceTableExamFilter(e.target.value)}
+                        className="w-full min-w-[8rem] max-w-[17rem] text-xs font-semibold normal-case tracking-normal py-2 pl-2 pr-7 border border-gray-200 rounded-md text-gray-500 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-petcare-light/50 cursor-pointer"
+                      >
+                        <option value="">Todos os exames</option>
+                        {props.priceTableExamOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </th>
+                    <th className="p-3 align-middle whitespace-nowrap min-w-[8.5rem]">
+                      <label htmlFor="price-table-period-filter" className="sr-only">
+                        Filtrar por período
+                      </label>
+                      <select
+                        id="price-table-period-filter"
+                        value={props.priceTablePeriodFilter}
+                        onChange={(e) => props.setPriceTablePeriodFilter(e.target.value)}
+                        className="w-full min-w-[7.5rem] max-w-[12rem] text-xs font-semibold normal-case tracking-normal py-2 pl-2 pr-7 border border-gray-200 rounded-md text-gray-500 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-petcare-light/50 cursor-pointer"
+                      >
+                        <option value="">Todos os períodos</option>
+                        <option value="comercial">{getPeriodLabel('comercial')}</option>
+                        <option value="noturno">{getPeriodLabel('noturno')}</option>
+                        <option value="fds">{getPeriodLabel('fds')}</option>
+                        <option value="feriado">{getPeriodLabel('feriado')}</option>
+                      </select>
+                    </th>
                     <th className="p-3 text-right">Valor Total</th>
                     <th className="p-3 text-right">Líquido Prof.</th>
                     <th className="p-3 text-right">Líquido Clínica</th>
@@ -150,12 +132,6 @@ export function PricesTab(props: DashboardData) {
                 <tbody className="divide-y divide-gray-100 text-sm">
                   {(() => {
                     const visibleRules = props.priceRules.filter(rule => {
-                        if (props.selectedClinicFilter) {
-                          /** Só regras explicitamente cadastradas para essa clínica (sem incluir "Todas as Clínicas"). */
-                          if (props.isGenericClinicId(rule.clinicId)) return false;
-                          if ((rule.clinicId || '').trim() !== props.selectedClinicFilter.trim()) return false;
-                        }
-
                         // Removido o bloqueio que ocultava regras de parceiros na visão geral da clínica.
                         // Agora a tabela de preços mostra todas as regras e o usuário pode usar o filtro
                         // "Todas as clínicas e veterinários" para refinar a busca.
@@ -228,7 +204,7 @@ export function PricesTab(props: DashboardData) {
                       return (
                         <tr>
                           <td colSpan={(props.canEditPriceRule || props.canDeletePriceRule) ? 6 : 5} className="p-8 text-center text-gray-400">
-                            {props.selectedClinicFilter ? 'Nenhuma regra de preço encontrada para esta clínica.' : 'Nenhuma regra de preço cadastrada.'}
+                            Nenhuma regra de preço cadastrada.
                           </td>
                         </tr>
                       );

@@ -6,13 +6,23 @@ export function findDuplicatePriceRule(params: {
   priceForm: Partial<PriceRule>;
   editingPrice: PriceRule | null;
   priceRules: PriceRule[];
+  /** Nome do exame quando `modality === 'OUTROS'` (modal de preços). */
+  customModalityName: string;
 }): PriceRule | undefined {
-  const { priceForm, editingPrice, priceRules } = params;
+  const { priceForm, editingPrice, priceRules, customModalityName } = params;
+  const isOutros = String(priceForm.modality ?? '').trim() === 'OUTROS';
+  const labelForForm =
+    isOutros && customModalityName.trim()
+      ? customModalityName
+      : isOutros
+        ? (priceForm.label ?? '')
+        : undefined;
   const keyForm = priceRuleDuplicateKey({
     clinicId: priceForm.clinicId,
     veterinarianId: priceForm.veterinarianId,
     modality: priceForm.modality,
     period: priceForm.period,
+    label: labelForForm,
   });
   return priceRules.find((r) => {
     if (editingPrice && editingPrice.id === r.id) return false;
@@ -22,6 +32,7 @@ export function findDuplicatePriceRule(params: {
         veterinarianId: r.veterinarianId,
         modality: r.modality,
         period: r.period,
+        label: r.label,
       }) === keyForm
     );
   });

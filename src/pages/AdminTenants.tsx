@@ -8,7 +8,7 @@ import { supabase } from '../lib/supabase';
 import { formatMoney } from '../utils/calculations';
 import {
   Building2, Stethoscope, Plus, Trash2, Search, Shield, Edit2, Link as LinkIcon, UserCheck,
-  Eraser, AlertTriangle, Loader2, CheckCircle, XCircle, ChevronDown, ChevronRight, Users
+  Eraser, AlertTriangle, Loader2, CheckCircle, XCircle, ChevronDown, ChevronRight, Users, FileText
 } from 'lucide-react';
 
 interface PartnerService {
@@ -256,6 +256,13 @@ export const AdminTenants = () => {
         </div>
 
         <div className="flex gap-2">
+          <Link
+            to="/tenants/logs"
+            className="bg-gray-50 text-gray-700 border border-gray-200 px-4 py-2 rounded-lg font-medium hover:bg-gray-100 transition-colors flex items-center shadow-sm"
+            title="Ver logs de acesso dos assinantes"
+          >
+            <FileText className="w-4 h-4 mr-2" /> Logs de acesso
+          </Link>
           <button
             type="button"
             onClick={() => {

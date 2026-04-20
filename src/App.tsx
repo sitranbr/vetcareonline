@@ -8,6 +8,7 @@ import { Dashboard } from './pages/Dashboard';
 import { AdminUsers } from './pages/AdminUsers';
 import { AdminUserForm } from './pages/AdminUserForm';
 import { AdminSettings } from './pages/AdminSettings';
+import { AdminAccessLogs } from './pages/AdminAccessLogs';
 import { AdminTenantNew } from './pages/AdminTenantNew';
 import { AdminTenantEdit } from './pages/AdminTenantEdit';
 import { Layout } from './components/Layout';
@@ -111,6 +112,7 @@ function App() {
                 <Route index element={<Dashboard />} />
                 <Route path="tenants/new" element={<AdminTenantNew />} />
                 <Route path="tenants/:tenantId/edit" element={<AdminTenantEdit />} />
+                <Route path="tenants/logs" element={<AdminAccessLogs />} />
                 <Route path="users/new" element={<AdminUserForm />} />
                 <Route path="users/:userId/edit" element={<AdminUserForm />} />
                 <Route path="users" element={<AdminUsers />} />

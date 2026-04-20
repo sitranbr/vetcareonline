@@ -38,6 +38,12 @@ export function ReportsTab(props: DashboardData) {
     EXAM_LIST_MODALITY_FILTER_OPTIONS.find((o) => o.value === props.reportModalityFilter)?.label ??
     props.reportModalityFilter;
 
+  const { professional: profM, clinic: clinM } = props.machineStats;
+  const liqProfAposRepasseClinica = profM.total - profM.repasseClinic;
+  const repasseProfMaquinaClinica = clinM.repasseProf;
+  const repasseClinicaMaquinaProf = profM.repasseClinic;
+  const liqClinicaAposRepasseProf = clinM.total - clinM.repasseProf;
+
   return (
           <div className="p-6">
             <div className="flex flex-col gap-4 mb-6">
@@ -123,11 +129,55 @@ export function ReportsTab(props: DashboardData) {
                </div>
                <div className="hidden md:flex items-center justify-center text-gray-300 font-bold text-3xl">-</div>
                <div className="flex-1 w-full">
-                 <SummaryCard title="Líquido Profissional" value={formatMoney(props.reportStats.totalRepasseProf)} subtitle={props.loggedUserEntity?.type === 'vet' ? "Sua Receita Líquida" : "A Pagar ao Veterinário"} icon={UserCheck} colorClass="text-blue-600" iconColorClass="text-blue-600" />
+                 <SummaryCard
+                   title="Líquido Profissional"
+                   value={formatMoney(props.reportStats.totalRepasseProf)}
+                   subtitle={props.loggedUserEntity?.type === 'vet' ? 'Sua Receita Líquida' : 'A Pagar ao Veterinário'}
+                   icon={UserCheck}
+                   colorClass="text-blue-600"
+                   iconColorClass="text-blue-600"
+                   tip={
+                     <div className="space-y-1.5">
+                       <p>
+                         <span className="text-gray-500">Líquido (após repasse à clínica)</span>{' '}
+                         <span className="font-semibold text-gray-800">{formatMoney(liqProfAposRepasseClinica)}</span>
+                         <span className="text-gray-500"> +</span>
+                       </p>
+                       <p>
+                         <span className="text-gray-500">Repasse ao Profissional</span>{' '}
+                         <span className="font-semibold text-red-600">- {formatMoney(repasseProfMaquinaClinica)}</span>
+                       </p>
+                     </div>
+                   }
+                 />
                </div>
                <div className="hidden md:flex items-center justify-center text-gray-300 font-bold text-3xl">=</div>
                <div className="flex-1 w-full">
-                 <SummaryCard title="Líquido Clínica" value={formatMoney(props.reportStats.totalRepasseClinic)} subtitle={props.loggedUserEntity?.type === 'clinic' || props.user?.level === 1 ? "Receita Líquida da Clínica" : "Retido pela Clínica"} icon={Building2} colorClass="text-purple-600" iconColorClass="text-purple-600" />
+                 <SummaryCard
+                   title="Líquido Clínica"
+                   value={formatMoney(props.reportStats.totalRepasseClinic)}
+                   subtitle={
+                     props.loggedUserEntity?.type === 'clinic' || props.user?.level === 1
+                       ? 'Receita Líquida da Clínica'
+                       : 'Retido pela Clínica'
+                   }
+                   icon={Building2}
+                   colorClass="text-purple-600"
+                   iconColorClass="text-purple-600"
+                   tip={
+                     <div className="space-y-1.5">
+                       <p>
+                         <span className="text-gray-500">Repasse à Clínica</span>{' '}
+                         <span className="font-semibold text-red-600">- {formatMoney(repasseClinicaMaquinaProf)}</span>
+                         <span className="text-gray-500"> +</span>
+                       </p>
+                       <p>
+                         <span className="text-gray-500">Líquido (após repasse ao profissional)</span>{' '}
+                         <span className="font-semibold text-gray-800">{formatMoney(liqClinicaAposRepasseProf)}</span>
+                       </p>
+                     </div>
+                   }
+                 />
                </div>
             </div>
 
@@ -153,15 +203,19 @@ export function ReportsTab(props: DashboardData) {
                   <div className="p-4 rounded-lg bg-gray-50 border border-gray-100">
                     <h4 className="font-bold text-petcare-dark mb-2">Máquina do Parceiro/Profissional</h4>
                     <div className="flex justify-between text-sm mb-1">
+                      <span className="text-gray-600">Quantidade de exames</span>
+                      <span className="font-bold text-gray-800">{props.machineStats.professional.count}</span>
+                    </div>
+                    <div className="flex justify-between text-sm mb-1">
                       <span className="text-gray-600">Total Arrecadado</span>
                       <span className="font-bold text-gray-800">{formatMoney(props.machineStats.professional.total)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">A Pagar Clínica</span>
+                      <span className="text-gray-500">Repasse à Clínica</span>
                       <span className="font-bold text-red-500">- {formatMoney(props.machineStats.professional.repasseClinic)}</span>
                     </div>
                     <div className="border-t border-gray-200 mt-2 pt-2 flex justify-between text-sm">
-                      <span className="font-bold text-gray-700">Líquido Profissional</span>
+                      <span className="font-bold text-gray-700">Líquido (após repasse à clínica)</span>
                       <span className="font-bold text-green-600">{formatMoney(props.machineStats.professional.total - props.machineStats.professional.repasseClinic)}</span>
                     </div>
                   </div>
@@ -169,15 +223,19 @@ export function ReportsTab(props: DashboardData) {
                   <div className="p-4 rounded-lg bg-gray-50 border border-gray-100">
                     <h4 className="font-bold text-petcare-dark mb-2">Máquina da Clínica</h4>
                     <div className="flex justify-between text-sm mb-1">
+                      <span className="text-gray-600">Quantidade de exames</span>
+                      <span className="font-bold text-gray-800">{props.machineStats.clinic.count}</span>
+                    </div>
+                    <div className="flex justify-between text-sm mb-1">
                       <span className="text-gray-600">Total Arrecadado</span>
                       <span className="font-bold text-gray-800">{formatMoney(props.machineStats.clinic.total)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Repasse Profissional</span>
+                      <span className="text-gray-500">Repasse ao Profissional</span>
                       <span className="font-bold text-red-500">- {formatMoney(props.machineStats.clinic.repasseProf)}</span>
                     </div>
                     <div className="border-t border-gray-200 mt-2 pt-2 flex justify-between text-sm">
-                      <span className="font-bold text-gray-700">Líquido Clínica</span>
+                      <span className="font-bold text-gray-700">Líquido (após repasse ao profissional)</span>
                       <span className="font-bold text-green-600">{formatMoney(props.machineStats.clinic.total - props.machineStats.clinic.repasseProf)}</span>
                     </div>
                   </div>

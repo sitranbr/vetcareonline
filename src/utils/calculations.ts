@@ -188,7 +188,7 @@ export const getPeriodLabel = (p: Period) => {
 
 /** Opções do filtro da lista de exames (valor = código salvo no exame; label = nome amigável). */
 export const EXAM_LIST_MODALITY_FILTER_OPTIONS: { value: string; label: string }[] = [
-  { value: '', label: 'Todas as modalidades' },
+  { value: '', label: 'Exame' },
   { value: 'USG', label: 'Ultrassom' },
   { value: 'RX', label: 'Raio-X' },
   { value: 'RX_CONTROLE', label: 'Raio-X controle' },

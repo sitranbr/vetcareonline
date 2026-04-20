@@ -103,23 +103,6 @@ export function ExamsListTab(props: DashboardData) {
                       className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-petcare-light/50 outline-none"
                     />
                   </div>
-                  <div className="w-full sm:w-auto min-w-[200px]">
-                    <label htmlFor="exam-list-modality-filter" className="sr-only">
-                      Filtrar por modalidade
-                    </label>
-                    <select
-                      id="exam-list-modality-filter"
-                      value={props.filterExamModality}
-                      onChange={(e) => props.setFilterExamModality(e.target.value)}
-                      className="w-full pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-petcare-light/50 outline-none cursor-pointer"
-                    >
-                      {EXAM_LIST_MODALITY_FILTER_OPTIONS.map((o) => (
-                        <option key={o.value || 'all'} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                   <div className="relative w-full sm:w-auto" ref={periodWrapRef}>
                     <button
                       type="button"
@@ -211,17 +194,52 @@ export function ExamsListTab(props: DashboardData) {
                   <tr className="bg-gray-50 border-b border-gray-100 text-xs uppercase text-gray-500 font-semibold tracking-wider">
                     <th className="p-4 rounded-tl-lg">Data</th>
                     <th className="p-4">Paciente</th>
-                    <th className="p-4">Exame</th>
+                    <th className="p-4 align-middle whitespace-nowrap min-w-[10rem]">
+                      <label htmlFor="exam-list-modality-filter" className="sr-only">
+                        Filtrar por modalidade
+                      </label>
+                      <select
+                        id="exam-list-modality-filter"
+                        value={props.filterExamModality}
+                        onChange={(e) => props.setFilterExamModality(e.target.value)}
+                        className="w-full min-w-[9rem] max-w-[15rem] text-[11px] font-semibold normal-case tracking-normal py-1.5 pl-2 pr-6 border border-gray-200 rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-petcare-light/50 cursor-pointer"
+                      >
+                        {EXAM_LIST_MODALITY_FILTER_OPTIONS.map((o) => (
+                          <option key={o.value || 'all'} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </th>
                     <th className="p-4">Veterinário</th>
                     <th className="p-4">Clínica</th>
                     {props.canViewExamValueColumn && <th className="p-4 text-right">Valor</th>}
+                    <th className="p-4 align-middle whitespace-nowrap">
+                      <label htmlFor="exam-list-machine-filter" className="sr-only">
+                        Filtrar por proprietário da máquina
+                      </label>
+                      <select
+                        id="exam-list-machine-filter"
+                        value={props.filterExamListMachineOwner}
+                        onChange={(e) =>
+                          props.setFilterExamListMachineOwner(
+                            (e.target.value || '') as '' | 'clinic' | 'professional',
+                          )
+                        }
+                        className="w-full min-w-[7.25rem] max-w-[10rem] text-[11px] font-semibold normal-case tracking-normal py-1.5 pl-2 pr-6 border border-gray-200 rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-petcare-light/50 cursor-pointer"
+                      >
+                        <option value="">Máquina</option>
+                        <option value="clinic">Clínica</option>
+                        <option value="professional">Profissional</option>
+                      </select>
+                    </th>
                     <th className="p-4 rounded-tr-lg text-center">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-sm text-gray-700">
                   {props.filteredExamsForList.length === 0 ? (
                     <tr>
-                      <td colSpan={props.canViewExamValueColumn ? 7 : 6} className="p-8 text-center text-gray-400">
+                      <td colSpan={props.canViewExamValueColumn ? 8 : 7} className="p-8 text-center text-gray-400">
                         {props.exams.length === 0 ? 'Nenhum exame encontrado.' : 'Nenhum exame corresponde à busca.'}
                       </td>
                     </tr>
@@ -279,6 +297,19 @@ export function ExamsListTab(props: DashboardData) {
                               {formatMoney(exam.totalValue)}
                             </td>
                           )}
+
+                          <td className="p-4">
+                            <span
+                              className="inline-flex items-center px-2 py-1 rounded bg-gray-100 text-gray-600 text-xs font-medium"
+                              title={
+                                exam.machineOwner === 'professional'
+                                  ? 'Equipamento do profissional / parceiro (volante)'
+                                  : 'Equipamento da clínica (fixa)'
+                              }
+                            >
+                              {exam.machineOwner === 'professional' ? 'Profissional' : 'Clínica'}
+                            </span>
+                          </td>
                           
                           <td className="p-4">
                             <div className="flex items-center justify-center gap-2 opacity-100 transition-opacity">

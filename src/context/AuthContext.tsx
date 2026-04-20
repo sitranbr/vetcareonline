@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, ReactNode, useEffect, useRe
 import { User, UserPermissions, TenantContext } from '../types';
 import { isClinicTierUser, isVetTierUser } from '../lib/subscriberTier';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
+import { logAuditAccess } from '../lib/auditLog';
 import { AuthError, createClient } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -497,6 +498,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setProfileError(null);
       
       await hydrateUserProfile(data.user);
+      logAuditAccess(supabase, { userId: data.user.id, action: 'login' });
     }
     
     isLoggingInRef.current = false;
@@ -504,6 +506,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = async () => {
+    const uidForAudit = userIdRef.current;
+    if (uidForAudit) {
+      logAuditAccess(supabase, { userId: uidForAudit, action: 'logout' });
+    }
     setUser(null);
     setCurrentTenant(null);
     userIdRef.current = null;

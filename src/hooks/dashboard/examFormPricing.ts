@@ -1,14 +1,19 @@
 import { getModalityLabel } from '../../utils/calculations';
-import type { Period, PriceRule } from '../../types';
+import type { Exam, Period, PriceRule } from '../../types';
 import { clinicMatchesExamForm } from '../../lib/dashboardHelpers';
 
 export type ExamFormOption = { value: string; label: string; isCustom: boolean };
+
+/** Valor do `<select>` para criar um exame OUTROS antes de digitar o nome. */
+export const EXAM_FORM_OUTROS_NEW_VALUE = '__OUTROS_NEW__';
 
 /**
  * Opções do dropdown de exame no formulário, derivadas das regras de preço + clínica/vet efetivos.
  */
 export function deriveAvailableExamsForSelectedClinic(params: {
   priceRules: PriceRule[];
+  /** Exames já salvos: inclui nomes OUTROS usados no passado (mesmo sem regra de preço ativa). */
+  priorExams?: Exam[];
   effectiveClinicId: string;
   effectiveVeterinarianId: string;
   effectiveOwnerVetId: string;
@@ -17,6 +22,7 @@ export function deriveAvailableExamsForSelectedClinic(params: {
 }): ExamFormOption[] {
   const {
     priceRules,
+    priorExams = [],
     effectiveClinicId,
     effectiveVeterinarianId,
     effectiveOwnerVetId,
@@ -90,7 +96,34 @@ export function deriveAvailableExamsForSelectedClinic(params: {
     });
   }
 
-  return Array.from(examsMap.values());
+  const examMatchesScope = (ex: Exam) => {
+    const examVetId = (ex.veterinarianId || '').trim();
+    const clinicMatch = clinicMatchesExamForm(ex.clinicId ?? '', cleanEffectiveId);
+    const vetMatch =
+      !examVetId ||
+      examVetId === 'default' ||
+      examVetId === safeVetId ||
+      (effectiveOwnerVetId && examVetId === effectiveOwnerVetId);
+    return clinicMatch && vetMatch;
+  };
+
+  priorExams.forEach((ex) => {
+    if (String(ex.modality || '').trim() !== 'OUTROS') return;
+    const name = (ex.studyDescription || '').trim();
+    if (!name) return;
+    if (ex.period !== selectedPeriod) return;
+    if (!examMatchesScope(ex)) return;
+    const val = `OUTROS|${name}`;
+    if (!examsMap.has(val)) {
+      examsMap.set(val, { value: val, label: name, isCustom: true });
+    }
+  });
+
+  const list = Array.from(examsMap.values());
+  if (!list.some((o) => o.value === EXAM_FORM_OUTROS_NEW_VALUE)) {
+    list.push({ value: EXAM_FORM_OUTROS_NEW_VALUE, label: 'Outro (Novo Exame)', isCustom: true });
+  }
+  return list;
 }
 
 export type PeriodOption = { value: string; label: string };

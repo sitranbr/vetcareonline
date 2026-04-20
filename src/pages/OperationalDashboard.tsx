@@ -186,7 +186,7 @@ export const OperationalDashboard = () => {
               type="button"
               onClick={() => {
                 d.setActiveTab(tab.id as 'form' | 'list' | 'reports' | 'prices');
-                if (tab.id === 'prices') d.setSelectedClinicFilter('');
+                if (tab.id === 'prices') d.setPriceTableVetFilter('');
               }}
               className={clsx(
                 'flex-1 min-w-[120px] px-4 py-3 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2',

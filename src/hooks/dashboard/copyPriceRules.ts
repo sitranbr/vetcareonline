@@ -79,7 +79,7 @@ export async function runCopyPriceRules(payload: CopyPricesPayload, tenantOwnerI
 
   let existingQuery = supabase
     .from('price_rules')
-    .select('id, clinic_id, veterinarian_id, modality, period')
+    .select('id, clinic_id, veterinarian_id, modality, period, label')
     .eq('owner_id', tenantOwnerId);
   if (targetType === 'clinic') {
     existingQuery = existingQuery.eq('clinic_id', targetId);

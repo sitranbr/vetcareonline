@@ -1,6 +1,6 @@
 import { format, isValid, parseISO } from 'date-fns';
 import { getModalityLabel } from '../../utils/calculations';
-import type { Exam, Modality, Veterinarian } from '../../types';
+import type { Exam, MachineOwner, Modality, Veterinarian } from '../../types';
 import { executorMatchesPartnerRoot, resolveClinicEntityIdForPartnerProfile } from '../../lib/dashboardHelpers';
 
 type PartnerVetRow = { id: string; profileId: string; ownerId?: string };
@@ -28,6 +28,8 @@ export function deriveFilteredExamsForList(params: {
   filterListText: string;
   /** Código de modalidade (ex.: USG) ou vazio para todas. */
   filterExamModality: string;
+  /** `clinic` | `professional` ou vazio = todas (proprietário da máquina). */
+  filterListMachineOwner: MachineOwner | '';
   examListDateOrder: 'desc' | 'asc';
   examListDateFrom: string;
   examListDateTo: string;
@@ -50,6 +52,7 @@ export function deriveFilteredExamsForList(params: {
     exams,
     filterListText,
     filterExamModality,
+    filterListMachineOwner,
     examListDateOrder,
     examListDateFrom,
     examListDateTo,
@@ -78,6 +81,10 @@ export function deriveFilteredExamsForList(params: {
   const filtered = exams.filter((e) => {
     if (!examMatchesListTextSearch(e, filterListText)) return false;
     if (filterExamModality && String(e.modality ?? '') !== filterExamModality) return false;
+    if (filterListMachineOwner) {
+      const owner = ((e.machineOwner ?? 'clinic') as MachineOwner) || 'clinic';
+      if (owner !== filterListMachineOwner) return false;
+    }
     const parsed = parseISO(e.date);
     if (!isValid(parsed)) return true;
     const dayStr = format(parsed, 'yyyy-MM-dd');

@@ -15,6 +15,7 @@ import { canManageTeamAccess } from '../../lib/teamPermissions';
 import type { Modality, Period, MachineOwner } from '../../types';
 import type { ExamItem } from '../../types';
 import type { DashboardData } from '../../hooks/useDashboardData';
+import { EXAM_FORM_OUTROS_NEW_VALUE } from '../../hooks/dashboard/examFormPricing';
 
 export function ExamFormTab(props: DashboardData) {
   return (
@@ -231,11 +232,27 @@ export function ExamFormTab(props: DashboardData) {
 
                 <div className="space-y-4">
                   {props.formData.items.map((item, index) => {
-                    const selectValue = item.modality === 'OUTROS'
-                      ? (props.availableExamsForSelectedClinic.some(opt => opt.value === `OUTROS|${item.studyDescription || ''}`)
-                          ? `OUTROS|${item.studyDescription || ''}`
-                          : '')
-                      : item.modality;
+                    const selectValue =
+                      item.modality === 'OUTROS'
+                        ? (item.studyDescription || '').trim()
+                          ? `OUTROS|${(item.studyDescription || '').trim()}`
+                          : EXAM_FORM_OUTROS_NEW_VALUE
+                        : item.modality;
+
+                    const trimmedOutros = (item.studyDescription || '').trim();
+                    const examOptionsForRow =
+                      item.modality === 'OUTROS' && trimmedOutros
+                        ? (() => {
+                            const v = `OUTROS|${trimmedOutros}`;
+                            if (props.availableExamsForSelectedClinic.some((o) => o.value === v)) {
+                              return props.availableExamsForSelectedClinic;
+                            }
+                            return [
+                              ...props.availableExamsForSelectedClinic,
+                              { value: v, label: trimmedOutros, isCustom: true as const },
+                            ];
+                          })()
+                        : props.availableExamsForSelectedClinic;
 
                     return (
                     <div key={item.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm relative group">
@@ -260,6 +277,11 @@ export function ExamFormTab(props: DashboardData) {
                             value={selectValue} 
                             onChange={e => {
                               const val = e.target.value;
+                              if (val === EXAM_FORM_OUTROS_NEW_VALUE) {
+                                props.updateItem(item.id, 'modality', 'OUTROS');
+                                props.updateItem(item.id, 'studyDescription', '');
+                                return;
+                              }
                               if (val.startsWith('OUTROS|')) {
                                 const customName = val.substring(7);
                                 props.updateItem(item.id, 'modality', 'OUTROS');
@@ -272,11 +294,31 @@ export function ExamFormTab(props: DashboardData) {
                             className="w-full px-3 py-2 border rounded-lg bg-gray-50 focus:bg-white transition-colors"
                           >
                             <option value="">Selecione...</option>
-                            {props.availableExamsForSelectedClinic.map(opt => (
-                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            {examOptionsForRow.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
                             ))}
                           </select>
                         </div>
+
+                        {item.modality === 'OUTROS' && (
+                          <div className="md:col-span-2 animate-fade-in">
+                            <label className="block text-xs font-bold text-gray-500 mb-1">
+                              Nome do exame personalizado
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={item.studyDescription || ''}
+                              onChange={(e) =>
+                                props.updateItem(item.id, 'studyDescription', e.target.value)
+                              }
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-petcare-DEFAULT"
+                              placeholder="Ex: Ecocardiograma"
+                            />
+                          </div>
+                        )}
                         
                         {(item.modality === 'RX' || item.modality === 'RX_FAST') && (
                           <div className="animate-fade-in">
