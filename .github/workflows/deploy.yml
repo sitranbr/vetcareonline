@@ -8,32 +8,48 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy via SSH
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build (Vite)
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: npm run build
+
+      # Envia apenas o dist/ para o servidor (evita OOM no Droplet)
+      - name: Upload dist via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          source: "dist/*"
+          target: "/tmp/vetcareonline-dist"
+          strip_components: 1
+
+      - name: Publish on server (Nginx)
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.DROPLET_HOST }}
           username: ${{ secrets.DROPLET_USER }}
           key: ${{ secrets.DROPLET_SSH_KEY }}
-          # O build (`vite build`) pode demorar em Droplets pequenos.
-          # Aumenta o tempo limite do comando e do SSH para evitar "Run Command Timeout".
-          command_timeout: 30m
+          command_timeout: 10m
           timeout: 2m
           script: |
             set -e
 
-            cd /opt/petcare_source/vetcareonline
-
-            # Evita erro "detected dubious ownership" no deploy via SSH
-            git config --global --add safe.directory /opt/petcare_source/vetcareonline
-            git fetch --all
-            git reset --hard origin/main
-
-            npm ci
-            NODE_OPTIONS="--max-old-space-size=2048" npm run build
-
-            # Publica o build do Vite (dist/) na pasta servida pelo Nginx (root)
             sudo mkdir -p /var/www/medvetpiquet.com.br/painel
-            sudo rsync -av --delete dist/ /var/www/medvetpiquet.com.br/painel/
+            sudo rsync -av --delete /tmp/vetcareonline-dist/ /var/www/medvetpiquet.com.br/painel/
+            sudo rm -rf /tmp/vetcareonline-dist
 
             sudo nginx -t
             sudo systemctl reload nginx
